@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-	
+
 	vi = SDL_GetVideoInfo();
 	width = vi->current_w - 20;
 	height = vi->current_h - 80;
@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
 		printf("Could not initialise SDL opengl\n");
 		return -1;
 	}
-	
+
 	SDL_WM_SetCaption("FontStash Demo", 0);
 
 //	fnt = sth_create("DroidSansJapanese.ttf", 512,512);
@@ -77,18 +77,18 @@ int main(int argc, char *argv[])
 	{
 		printf("Could not add font.\n");
 		return -1;
-	}	
+	}
 	if (!sth_add_font(stash,2,"DroidSerif-Bold.ttf"))
 	{
 		printf("Could not add font.\n");
 		return -1;
-	}	
+	}
 	if (!sth_add_font(stash,3,"DroidSansJapanese.ttf"))
 	{
 		printf("Could not add font.\n");
 		return -1;
-	}	
-	
+	}
+
 	done = 0;
 	while (!done)
 	{
@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
 					break;
 			}
 		}
-		
+
 		// Update and render
 		glViewport(0, 0, width, height);
 		glClearColor(0.3f, 0.3f, 0.32f, 1.0f);
@@ -130,9 +130,9 @@ int main(int argc, char *argv[])
 		glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
 		sx = 100; sy = 250;
-		
+
 		sth_begin_draw(stash);
-		
+
 		dx = sx; dy = sy;
 		sth_draw_text(stash, 0,24.0f, dx,dy,"The quick ",&dx);
 		sth_draw_text(stash, 1,48.0f, dx,dy,"brown ",&dx);
@@ -156,11 +156,11 @@ int main(int argc, char *argv[])
 		sth_draw_text(stash, 3,18.0f, dx,dy,"私はガラスを食べられます。それは私を傷つけません。",&dx);
 
 		sth_end_draw(stash);
-		
+
 		glEnable(GL_DEPTH_TEST);
 		SDL_GL_SwapBuffers();
 	}
-	
+
 	SDL_Quit();
 	return 0;
 }
