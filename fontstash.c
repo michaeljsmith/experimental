@@ -53,7 +53,7 @@ struct sth_quad
 
 struct sth_row
 {
-	short x,y,h;	
+	short x,y,h;
 };
 
 struct sth_glyph
@@ -149,7 +149,7 @@ struct sth_stash* sth_create(int cachew, int cacheh)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
 	return stash;
-	
+
 error:
 	if (stash != NULL)
 		free(stash);
@@ -161,19 +161,19 @@ int sth_add_font(struct sth_stash* stash, int idx, const char* path)
 	FILE* fp = 0;
 	int i, ascent, descent, fh, lineGap;
 	struct sth_font* fnt;
-	
+
 	if (idx < 0 || idx >= MAX_FONTS) return 0;
-	
+
 	fnt = &stash->fonts[idx];
 	if (fnt->data)
 		free(fnt->data);
 	if (fnt->glyphs)
 		free(fnt->glyphs);
 	memset(fnt,0,sizeof(struct sth_font));
-	
+
 	// Init hash lookup.
 	for (i = 0; i < HASH_LUT_SIZE; ++i) fnt->lut[i] = -1;
-	
+
 	// Read in the font data.
 	fp = fopen(path, "rb");
 	if (!fp) goto error;
@@ -185,10 +185,10 @@ int sth_add_font(struct sth_stash* stash, int idx, const char* path)
 	fread(fnt->data, 1, fnt->datasize, fp);
 	fclose(fp);
 	fp = 0;
-	
+
 	// Init stb_truetype
 	if (!stbtt_InitFont(&fnt->font, fnt->data, 0)) goto error;
-	
+
 	// Store normalized line height. The real line height is got
 	// by multiplying the lineh by font size.
 	stbtt_GetFontVMetrics(&fnt->font, &ascent, &descent, &lineGap);
@@ -196,9 +196,9 @@ int sth_add_font(struct sth_stash* stash, int idx, const char* path)
 	fnt->ascender = (float)ascent / (float)fh;
 	fnt->descender = (float)descent / (float)fh;
 	fnt->lineh = (float)(fh + lineGap) / (float)fh;
-	
+
 	return 1;
-	
+
 error:
 	if (fnt->data) free(fnt->data);
 	if (fnt->glyphs) free(fnt->glyphs);
@@ -227,7 +227,7 @@ static struct sth_glyph* get_glyph(struct sth_stash* stash, struct sth_font* fnt
 			return &fnt->glyphs[i];
 		i = fnt->glyphs[i].next;
 	}
-	
+
 	// Could not find glyph, create it.
 	scale = stbtt_ScaleForPixelHeight(&fnt->font, size);
 	g = stbtt_FindGlyphIndex(&fnt->font, codepoint);
@@ -245,7 +245,7 @@ static struct sth_glyph* get_glyph(struct sth_stash* stash, struct sth_font* fnt
 		if (stash->rows[i].h == rh && stash->rows[i].x+gw+1 <= stash->tw)
 			br = &stash->rows[i];
 	}
-	
+
 	// If no row found, add new.
 	if (br == NULL)
 	{
@@ -264,7 +264,7 @@ static struct sth_glyph* get_glyph(struct sth_stash* stash, struct sth_font* fnt
 		br->h = rh;
 		stash->nrows++;
 	}
-	
+
 	// Alloc space for new glyph.
 	fnt->nglyphs++;
 	fnt->glyphs = realloc(fnt->glyphs, fnt->nglyphs*sizeof(struct sth_glyph));
@@ -286,7 +286,7 @@ static struct sth_glyph* get_glyph(struct sth_stash* stash, struct sth_font* fnt
 
 	// Advance row location.
 	br->x += gw+1;
-	
+
 	// Insert char to hash lookup.
 	glyph->next = fnt->lut[h];
 	fnt->lut[h] = fnt->nglyphs-1;
@@ -298,10 +298,10 @@ static struct sth_glyph* get_glyph(struct sth_stash* stash, struct sth_font* fnt
 		stbtt_MakeGlyphBitmap(&fnt->font, bmp, gw,gh,gw, scale,scale, g);
 		// Update texture
 		glPixelStorei(GL_UNPACK_ALIGNMENT,1);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, glyph->x0,glyph->y0, gw,gh, GL_ALPHA,GL_UNSIGNED_BYTE,bmp); 
+		glTexSubImage2D(GL_TEXTURE_2D, 0, glyph->x0,glyph->y0, gw,gh, GL_ALPHA,GL_UNSIGNED_BYTE,bmp);
 		free(bmp);
 	}
-	
+
 	return glyph;
 }
 
@@ -310,22 +310,22 @@ static int get_quad(struct sth_stash* stash, struct sth_font* fnt, unsigned int 
 	int rx,ry;
 	struct sth_glyph* glyph = get_glyph(stash, fnt, codepoint, isize);
 	if (!glyph) return 0;
-	
+
 	rx = floorf(*x + glyph->xoff);
 	ry = floorf(*y - glyph->yoff);
-	
+
 	q->x0 = rx;
 	q->y0 = ry;
 	q->x1 = rx + glyph->x1 - glyph->x0;
 	q->y1 = ry - glyph->y1 + glyph->y0;
-	
+
 	q->s0 = (glyph->x0) * stash->itw;
 	q->t0 = (glyph->y0) * stash->ith;
 	q->s1 = (glyph->x1) * stash->itw;
 	q->t1 = (glyph->y1) * stash->ith;
-	
+
 	*x += glyph->xadv;
-	
+
 	return 1;
 }
 
@@ -342,7 +342,7 @@ static void flush_draw(struct sth_stash* stash)
 {
 	if (stash->nverts == 0)
 		return;
-		
+
 	glBindTexture(GL_TEXTURE_2D, stash->tex);
 	glEnable(GL_TEXTURE_2D);
 	glEnableClientState(GL_VERTEX_ARRAY);
@@ -387,7 +387,7 @@ void sth_end_draw(struct sth_stash* stash)
 		stash->nverts += 6;
 	}
 */
-	
+
 	flush_draw(stash);
 	stash->drawing = 0;
 }
@@ -403,24 +403,24 @@ void sth_draw_text(struct sth_stash* stash,
 	short isize = (short)(size*10.0f);
 	float* v;
 	struct sth_font* fnt;
-	
+
 	if (stash == NULL) return;
 	if (!stash->tex) return;
 	if (idx < 0 || idx >= MAX_FONTS) return;
 	fnt = &stash->fonts[idx];
 	if (!fnt->data) return;
-	
+
 	for (; *s; ++s)
 	{
 		if (decutf8(&state, &codepoint, *(unsigned char*)s)) continue;
 
 		if (stash->nverts+6 >= VERT_COUNT)
 			flush_draw(stash);
-		
+
 		if (!get_quad(stash, fnt, codepoint, isize, &x, &y, &q)) continue;
-		
+
 		v = &stash->verts[stash->nverts*4];
-		
+
 		v = setv(v, q.x0, q.y0, q.s0, q.t0);
 		v = setv(v, q.x1, q.y0, q.s1, q.t0);
 		v = setv(v, q.x1, q.y1, q.s1, q.t1);
@@ -428,10 +428,10 @@ void sth_draw_text(struct sth_stash* stash,
 		v = setv(v, q.x0, q.y0, q.s0, q.t0);
 		v = setv(v, q.x1, q.y1, q.s1, q.t1);
 		v = setv(v, q.x0, q.y1, q.s0, q.t1);
-		
-		stash->nverts += 6;		
+
+		stash->nverts += 6;
 	}
-	
+
 	if (dx) *dx = x;
 }
 
@@ -446,13 +446,13 @@ void sth_dim_text(struct sth_stash* stash,
 	short isize = (short)(size*10.0f);
 	struct sth_font* fnt;
 	float x = 0, y = 0;
-	
+
 	if (stash == NULL) return;
 	if (!stash->tex) return;
 	if (idx < 0 || idx >= MAX_FONTS) return;
 	fnt = &stash->fonts[idx];
 	if (!fnt->data) return;
-	
+
 	*minx = *maxx = x;
 	*miny = *maxy = y;
 
