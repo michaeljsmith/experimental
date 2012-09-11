@@ -1,0 +1,3 @@
+set print address off
+run
+bt

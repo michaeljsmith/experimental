@@ -25,7 +25,7 @@
 
 #include "fontstash.h"
 
-int main(int argc, char *argv[])
+int main(int /*argc*/, char* /*argv*/[])
 {
 	int done;
 	SDL_Event event;
@@ -68,22 +68,22 @@ int main(int argc, char *argv[])
 		printf("Could not create stash.\n");
 		return -1;
 	}
-	if (!sth_add_font(stash,0,"DroidSerif-Regular.ttf"))
+	if (!sth_add_font(stash,0,"data/DroidSerif-Regular.ttf"))
 	{
 		printf("Could not add font.\n");
 		return -1;
 	}
-	if (!sth_add_font(stash,1,"DroidSerif-Italic.ttf"))
+	if (!sth_add_font(stash,1,"data/DroidSerif-Italic.ttf"))
 	{
 		printf("Could not add font.\n");
 		return -1;
 	}
-	if (!sth_add_font(stash,2,"DroidSerif-Bold.ttf"))
+	if (!sth_add_font(stash,2,"data/DroidSerif-Bold.ttf"))
 	{
 		printf("Could not add font.\n");
 		return -1;
 	}
-	if (!sth_add_font(stash,3,"DroidSansJapanese.ttf"))
+	if (!sth_add_font(stash,3,"data/DroidSansJapanese.ttf"))
 	{
 		printf("Could not add font.\n");
 		return -1;

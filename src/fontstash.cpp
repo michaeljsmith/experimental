@@ -16,6 +16,8 @@
 // 3. This notice may not be removed or altered from any source distribution.
 //
 
+#include "fontstash.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -97,7 +99,7 @@ struct sth_stash
 // See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
 
 #define UTF8_ACCEPT 0
-#define UTF8_REJECT 1
+//#define UTF8_REJECT 1
 
 static const unsigned char utf8d[] = {
 	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 00..1f
@@ -180,9 +182,9 @@ int sth_add_font(struct sth_stash* stash, int idx, const char* path)
 	fseek(fp,0,SEEK_END);
 	fnt->datasize = (int)ftell(fp);
 	fseek(fp,0,SEEK_SET);
-	fnt->data = (unsigned char*)malloc(fnt->datasize);
+	fnt->data = (unsigned char*)malloc((size_t)fnt->datasize);
 	if (fnt->data == NULL) goto error;
-	fread(fnt->data, 1, fnt->datasize, fp);
+	fread(fnt->data, 1, (size_t)fnt->datasize, fp);
 	fclose(fp);
 	fp = 0;
 
@@ -230,7 +232,7 @@ static struct sth_glyph* get_glyph(struct sth_stash* stash, struct sth_font* fnt
 
 	// Could not find glyph, create it.
 	scale = stbtt_ScaleForPixelHeight(&fnt->font, size);
-	g = stbtt_FindGlyphIndex(&fnt->font, codepoint);
+	g = stbtt_FindGlyphIndex(&fnt->font, (int)codepoint);
 	stbtt_GetGlyphHMetrics(&fnt->font, g, &advance, &lsb);
 	stbtt_GetGlyphBitmapBox(&fnt->font, g, scale,scale, &x0,&y0,&x1,&y1);
 	gw = x1-x0;
@@ -261,13 +263,13 @@ static struct sth_glyph* get_glyph(struct sth_stash* stash, struct sth_font* fnt
 		br = &stash->rows[stash->nrows];
 		br->x = 0;
 		br->y = py;
-		br->h = rh;
+		br->h = (short)rh;
 		stash->nrows++;
 	}
 
 	// Alloc space for new glyph.
 	fnt->nglyphs++;
-	fnt->glyphs = realloc(fnt->glyphs, fnt->nglyphs*sizeof(struct sth_glyph));
+	fnt->glyphs = (struct sth_glyph*)realloc(fnt->glyphs, (unsigned)fnt->nglyphs*sizeof(struct sth_glyph));
 	if (!fnt->glyphs) return 0;
 
 	// Init glyph.
@@ -292,7 +294,7 @@ static struct sth_glyph* get_glyph(struct sth_stash* stash, struct sth_font* fnt
 	fnt->lut[h] = fnt->nglyphs-1;
 
 	// Rasterize
-	bmp = (unsigned char*)malloc(gw*gh);
+	bmp = (unsigned char*)malloc(size_t(gw*gh));
 	if (bmp)
 	{
 		stbtt_MakeGlyphBitmap(&fnt->font, bmp, gw,gh,gw, scale,scale, g);
@@ -311,8 +313,8 @@ static int get_quad(struct sth_stash* stash, struct sth_font* fnt, unsigned int 
 	struct sth_glyph* glyph = get_glyph(stash, fnt, codepoint, isize);
 	if (!glyph) return 0;
 
-	rx = floorf(*x + glyph->xoff);
-	ry = floorf(*y - glyph->yoff);
+	rx = (int)floorf(*x + glyph->xoff);
+	ry = (int)floorf(*y - glyph->yoff);
 
 	q->x0 = rx;
 	q->y0 = ry;
