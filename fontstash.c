@@ -446,7 +446,7 @@ void sth_dim_text(struct sth_stash* stash,
 	short isize = (short)(size*10.0f);
 	struct sth_font* fnt;
 	float x = 0, y = 0;
-
+ 
 	if (stash == NULL) return;
 	if (!stash->tex) return;
 	if (idx < 0 || idx >= MAX_FONTS) return;
