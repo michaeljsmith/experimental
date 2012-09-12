@@ -4,6 +4,7 @@
 #include <math.h>
 #include <functional>
 #include <string>
+#include <assert.h>
 #include "SDL.h"
 #include "SDL_Opengl.h"
 
@@ -11,6 +12,16 @@
 
 using std::function;
 using std::string;
+
+template <typename T> struct GlobalSetterScope {
+  T* _location;
+  T _oldValue;
+  GlobalSetterScope(T* location, T newValue): _location(location), _oldValue(*location) {
+    *_location = newValue;
+  }
+
+  ~GlobalSetterScope() {*_location = _oldValue;}
+};
 
 template <int Line> struct SourceLocationTag {};
 #define UNIQUE_TAG SourceLocationTag<__LINE__> // TODO: Make work across TUs!
@@ -39,8 +50,8 @@ template <typename T> Class<T> instance(Class<T> cls) {
 typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Action;
 typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Widget;
 
-function<void (string)> displayText;
-function<void (Class<Action>)> testHotRegion;
+function<void (string)> displayText = [] (string) {((void (*)())0)();};
+function<void (Class<Action>)> testHotRegion = [] (Class<Action>) {((void (*)())0)();};
 
 inline Class<Widget> button(string _text, Class<Action> _actionClass) {
   return [=] () {
@@ -53,8 +64,8 @@ inline Class<Widget> button(string _text, Class<Action> _actionClass) {
 
 inline Class<Widget> menu(Class<Widget> xClass0, Class<Widget> xClass1) {
   return [=] () -> Widget {
-    auto x0 = instance(xClass0);
-    auto x1 = instance(xClass1);
+    auto x0 = xClass0();
+    auto x1 = xClass1();
     return Widget([=] () -> void {
       x0();
       x1();
@@ -72,11 +83,9 @@ inline Class<Action>& quit() {
   return val;
 }
 
-inline Class<Widget> mainMenu() {
-  return menu(
-      button("new game", newGame()),
-      button("quit", quit()));
-}
+Class<Widget> mainMenu = menu(
+    button("new game", newGame()),
+    button("quit", quit()));
 
 int viewportWidth = -1, viewportHeight = -1;
 int done = 0;
@@ -139,6 +148,12 @@ inline void initializeFonts() {
   addFont(3, "data/DroidSansJapanese.ttf");
 }
 
+inline void renderText(string text) {
+  sth_draw_text(stash, 0, 24.0f, 100, 100, text.c_str(), nullptr);
+}
+
+Widget app;
+
 inline void handlePendingEvents() {
   SDL_Event event;
   while (SDL_PollEvent(&event))
@@ -163,7 +178,6 @@ inline void handlePendingEvents() {
 }
 
 inline void render() {
-  // Update and render
   glViewport(0, 0, viewportWidth, viewportHeight);
   glClearColor(0.3f, 0.3f, 0.32f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
@@ -180,32 +194,38 @@ inline void render() {
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
-  float sx,sy,dx,dy,lh;
-  sx = 100; sy = 250;
-
   sth_begin_draw(stash);
 
-  dx = sx; dy = sy;
-  sth_draw_text(stash, 0,24.0f, dx,dy,"The quick ",&dx);
-  sth_draw_text(stash, 1,48.0f, dx,dy,"brown ",&dx);
-  sth_draw_text(stash, 0,24.0f, dx,dy,"fox ",&dx);
-  sth_vmetrics(stash, 1,24, NULL,NULL,&lh);
-  dx = sx;
-  dy -= lh*1.2f;
-  sth_draw_text(stash, 1,24.0f, dx,dy,"jumps over ",&dx);
-  sth_draw_text(stash, 2,24.0f, dx,dy,"the lazy ",&dx);
-  sth_draw_text(stash, 0,24.0f, dx,dy,"dog.",&dx);
-  dx = sx;
-  dy -= lh*1.2f;
-  sth_draw_text(stash, 0,12.0f, dx,dy,"Now is the time for all good men to come to the aid of the party.",&dx);
-  sth_vmetrics(stash, 1,12, NULL,NULL,&lh);
-  dx = sx;
-  dy -= lh*1.2f*2;
-  sth_draw_text(stash, 1,18.0f, dx,dy,"Ég get etið gler án þess að meiða mig.",&dx);
-  sth_vmetrics(stash, 1,18, NULL,NULL,&lh);
-  dx = sx;
-  dy -= lh*1.2f;
-  sth_draw_text(stash, 3,18.0f, dx,dy,"私はガラスを食べられます。それは私を傷つけません。",&dx);
+  {
+    GlobalSetterScope<decltype(displayText)> setDisplayText(&displayText, renderText);
+    GlobalSetterScope<decltype(testHotRegion)> setTestHotRegion(&testHotRegion, [] (Class<Action>) {});
+    app();
+  }
+
+  //float sx,sy,dx,dy,lh;
+  //sx = 100; sy = 250;
+
+  //dx = sx; dy = sy;
+  //sth_draw_text(stash, 0,24.0f, dx,dy,"The quick ",&dx);
+  //sth_draw_text(stash, 1,48.0f, dx,dy,"brown ",&dx);
+  //sth_draw_text(stash, 0,24.0f, dx,dy,"fox ",&dx);
+  //sth_vmetrics(stash, 1,24, NULL,NULL,&lh);
+  //dx = sx;
+  //dy -= lh*1.2f;
+  //sth_draw_text(stash, 1,24.0f, dx,dy,"jumps over ",&dx);
+  //sth_draw_text(stash, 2,24.0f, dx,dy,"the lazy ",&dx);
+  //sth_draw_text(stash, 0,24.0f, dx,dy,"dog.",&dx);
+  //dx = sx;
+  //dy -= lh*1.2f;
+  //sth_draw_text(stash, 0,12.0f, dx,dy,"Now is the time for all good men to come to the aid of the party.",&dx);
+  //sth_vmetrics(stash, 1,12, NULL,NULL,&lh);
+  //dx = sx;
+  //dy -= lh*1.2f*2;
+  //sth_draw_text(stash, 1,18.0f, dx,dy,"Ég get etið gler án þess að meiða mig.",&dx);
+  //sth_vmetrics(stash, 1,18, NULL,NULL,&lh);
+  //dx = sx;
+  //dy -= lh*1.2f;
+  //sth_draw_text(stash, 3,18.0f, dx,dy,"私はガラスを食べられます。それは私を傷つけません。",&dx);
 
   sth_end_draw(stash);
 
@@ -220,10 +240,11 @@ int main(int /*argc*/, char* /*argv*/[])
 
   initializeFonts();
 
+  app = mainMenu();
+
 	while (!done)
 	{
     handlePendingEvents();
-
     render();
 	}
 
@@ -231,3 +252,4 @@ int main(int /*argc*/, char* /*argv*/[])
 
 	return 0;
 }
+
