@@ -3,41 +3,79 @@
 #include <string.h>
 #include <math.h>
 #include <functional>
+#include <string>
 #include "SDL.h"
 #include "SDL_Opengl.h"
 
 #include "fontstash.h"
 
 using std::function;
+using std::string;
 
 template <int Line> struct SourceLocationTag {};
 #define UNIQUE_TAG SourceLocationTag<__LINE__> // TODO: Make work across TUs!
 
-template <typename Tag, typename T> struct TrivialSubClass {};
+template <typename Tag, typename T> struct TrivialSubClass : public T {
+  TrivialSubClass(): T() {}
+  template <typename X0> TrivialSubClass(X0 const& x0): T(x0) {}
+};
 
-template <typename T> struct Object {};
-template <typename T> using Class = function<T ()>;
+template <typename T> struct Class : public function<T ()> {
+  Class(): function<T ()>() {}
+  template <typename X0> Class(X0 x0): function<T ()>(x0) {}
+};
 
-template <typename T> struct Method : public function<T> {};
-
-template <typename T> using Execute = TrivialSubClass<UNIQUE_TAG, Method<T ()>>;
-typedef TrivialSubClass<UNIQUE_TAG, Method<void ()>> Render;
-
-template <typename T> using Action = TrivialSubClass<UNIQUE_TAG, Object<Execute<T>>>;
-typedef TrivialSubClass<UNIQUE_TAG, Object<Render>> Widget;
-
-Widget command(string text, Action<void> const& action) {
+template <typename T> Class<T> reference(T const& obj) {
+  return [=] () {
+    return obj;
+  };
 }
 
-inline Action<void>& newGame() {
-  static Action<void> result;
-  return result;
+template <typename T> Class<T> instance(Class<T> cls) {
+  auto obj = cls();
+  return reference(obj);
 }
 
-inline Widget mainMenu() {
+typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Action;
+typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Widget;
+
+function<void (string)> displayText;
+function<void (Class<Action>)> testHotRegion;
+
+inline Class<Widget> button(string _text, Class<Action> _actionClass) {
+  return [=] () {
+    return Widget([=] () {
+      displayText(_text);
+      testHotRegion(_actionClass);
+    });
+  };
+}
+
+inline Class<Widget> menu(Class<Widget> xClass0, Class<Widget> xClass1) {
+  return [=] () -> Widget {
+    auto x0 = instance(xClass0);
+    auto x1 = instance(xClass1);
+    return Widget([=] () -> void {
+      x0();
+      x1();
+    });
+  };
+}
+
+inline Class<Action>& newGame() {
+  static Class<Action> val;
+  return val;
+}
+
+inline Class<Action>& quit() {
+  static Class<Action> val;
+  return val;
+}
+
+inline Class<Widget> mainMenu() {
   return menu(
-      command("new game", newGame()),
-      command("quit", quit()));
+      button("new game", newGame()),
+      button("quit", quit()));
 }
 
 int main(int /*argc*/, char* /*argv*/[])
