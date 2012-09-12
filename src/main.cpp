@@ -78,7 +78,8 @@ inline Class<Widget> mainMenu() {
       button("quit", quit()));
 }
 
-int viewportWidth, viewportHeight;
+int viewportWidth = -1, viewportHeight = -1;
+int done = 0;
 
 inline void initPlatform() {
   if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
@@ -138,6 +139,80 @@ inline void initializeFonts() {
   addFont(3, "data/DroidSansJapanese.ttf");
 }
 
+inline void handlePendingEvents() {
+  SDL_Event event;
+  while (SDL_PollEvent(&event))
+  {
+    switch (event.type)
+    {
+      case SDL_MOUSEMOTION:
+        break;
+      case SDL_MOUSEBUTTONDOWN:
+        break;
+      case SDL_KEYDOWN:
+        if (event.key.keysym.sym == SDLK_ESCAPE)
+          done = 1;
+        break;
+      case SDL_QUIT:
+        done = 1;
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+inline void render() {
+  // Update and render
+  glViewport(0, 0, viewportWidth, viewportHeight);
+  glClearColor(0.3f, 0.3f, 0.32f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDisable(GL_TEXTURE_2D);
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  glOrtho(0,viewportWidth,0,viewportHeight,-1,1);
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  glDisable(GL_DEPTH_TEST);
+  glColor4ub(255,255,255,255);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+
+  float sx,sy,dx,dy,lh;
+  sx = 100; sy = 250;
+
+  sth_begin_draw(stash);
+
+  dx = sx; dy = sy;
+  sth_draw_text(stash, 0,24.0f, dx,dy,"The quick ",&dx);
+  sth_draw_text(stash, 1,48.0f, dx,dy,"brown ",&dx);
+  sth_draw_text(stash, 0,24.0f, dx,dy,"fox ",&dx);
+  sth_vmetrics(stash, 1,24, NULL,NULL,&lh);
+  dx = sx;
+  dy -= lh*1.2f;
+  sth_draw_text(stash, 1,24.0f, dx,dy,"jumps over ",&dx);
+  sth_draw_text(stash, 2,24.0f, dx,dy,"the lazy ",&dx);
+  sth_draw_text(stash, 0,24.0f, dx,dy,"dog.",&dx);
+  dx = sx;
+  dy -= lh*1.2f;
+  sth_draw_text(stash, 0,12.0f, dx,dy,"Now is the time for all good men to come to the aid of the party.",&dx);
+  sth_vmetrics(stash, 1,12, NULL,NULL,&lh);
+  dx = sx;
+  dy -= lh*1.2f*2;
+  sth_draw_text(stash, 1,18.0f, dx,dy,"Ég get etið gler án þess að meiða mig.",&dx);
+  sth_vmetrics(stash, 1,18, NULL,NULL,&lh);
+  dx = sx;
+  dy -= lh*1.2f;
+  sth_draw_text(stash, 3,18.0f, dx,dy,"私はガラスを食べられます。それは私を傷つけません。",&dx);
+
+  sth_end_draw(stash);
+
+  glEnable(GL_DEPTH_TEST);
+  SDL_GL_SwapBuffers();
+}
+
 int main(int /*argc*/, char* /*argv*/[])
 {
   initPlatform();
@@ -145,78 +220,11 @@ int main(int /*argc*/, char* /*argv*/[])
 
   initializeFonts();
 
-	int done = 0;
 	while (!done)
 	{
-    SDL_Event event;
-		while (SDL_PollEvent(&event))
-		{
-			switch (event.type)
-			{
-				case SDL_MOUSEMOTION:
-					break;
-				case SDL_MOUSEBUTTONDOWN:
-					break;
-				case SDL_KEYDOWN:
-					if (event.key.keysym.sym == SDLK_ESCAPE)
-						done = 1;
-					break;
-				case SDL_QUIT:
-					done = 1;
-					break;
-				default:
-					break;
-			}
-		}
+    handlePendingEvents();
 
-		// Update and render
-		glViewport(0, 0, viewportWidth, viewportHeight);
-		glClearColor(0.3f, 0.3f, 0.32f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glDisable(GL_TEXTURE_2D);
-		glMatrixMode(GL_PROJECTION);
-		glLoadIdentity();
-		glOrtho(0,viewportWidth,0,viewportHeight,-1,1);
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
-		glDisable(GL_DEPTH_TEST);
-		glColor4ub(255,255,255,255);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-
-    float sx,sy,dx,dy,lh;
-		sx = 100; sy = 250;
-
-		sth_begin_draw(stash);
-
-		dx = sx; dy = sy;
-		sth_draw_text(stash, 0,24.0f, dx,dy,"The quick ",&dx);
-		sth_draw_text(stash, 1,48.0f, dx,dy,"brown ",&dx);
-		sth_draw_text(stash, 0,24.0f, dx,dy,"fox ",&dx);
-		sth_vmetrics(stash, 1,24, NULL,NULL,&lh);
-		dx = sx;
-		dy -= lh*1.2f;
-		sth_draw_text(stash, 1,24.0f, dx,dy,"jumps over ",&dx);
-		sth_draw_text(stash, 2,24.0f, dx,dy,"the lazy ",&dx);
-		sth_draw_text(stash, 0,24.0f, dx,dy,"dog.",&dx);
-		dx = sx;
-		dy -= lh*1.2f;
-		sth_draw_text(stash, 0,12.0f, dx,dy,"Now is the time for all good men to come to the aid of the party.",&dx);
-		sth_vmetrics(stash, 1,12, NULL,NULL,&lh);
-		dx = sx;
-		dy -= lh*1.2f*2;
-		sth_draw_text(stash, 1,18.0f, dx,dy,"Ég get etið gler án þess að meiða mig.",&dx);
-		sth_vmetrics(stash, 1,18, NULL,NULL,&lh);
-		dx = sx;
-		dy -= lh*1.2f;
-		sth_draw_text(stash, 3,18.0f, dx,dy,"私はガラスを食べられます。それは私を傷つけません。",&dx);
-
-		sth_end_draw(stash);
-
-		glEnable(GL_DEPTH_TEST);
-		SDL_GL_SwapBuffers();
+    render();
 	}
 
   shutdownPlatform();
