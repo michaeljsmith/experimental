@@ -1,29 +1,44 @@
-//
-// Copyright (c) 2009 Mikko Mononen memon@inside.org
-//
-// This software is provided 'as-is', without any express or implied
-// warranty.  In no event will the authors be held liable for any damages
-// arising from the use of this software.
-// Permission is granted to anyone to use this software for any purpose,
-// including commercial applications, and to alter it and redistribute it
-// freely, subject to the following restrictions:
-// 1. The origin of this software must not be misrepresented; you must not
-//    claim that you wrote the original software. If you use this software
-//    in a product, an acknowledgment in the product documentation would be
-//    appreciated but is not required.
-// 2. Altered source versions must be plainly marked as such, and must not be
-//    misrepresented as being the original software.
-// 3. This notice may not be removed or altered from any source distribution.
-//
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <functional>
 #include "SDL.h"
 #include "SDL_Opengl.h"
 
 #include "fontstash.h"
+
+using std::function;
+
+template <int Line> struct SourceLocationTag {};
+#define UNIQUE_TAG SourceLocationTag<__LINE__> // TODO: Make work across TUs!
+
+template <typename Tag, typename T> struct TrivialSubClass {};
+
+template <typename T> struct Object {};
+template <typename T> using Class = function<T ()>;
+
+template <typename T> struct Method : public function<T> {};
+
+template <typename T> using Execute = TrivialSubClass<UNIQUE_TAG, Method<T ()>>;
+typedef TrivialSubClass<UNIQUE_TAG, Method<void ()>> Render;
+
+template <typename T> using Action = TrivialSubClass<UNIQUE_TAG, Object<Execute<T>>>;
+typedef TrivialSubClass<UNIQUE_TAG, Object<Render>> Widget;
+
+Widget command(string text, Action<void> const& action) {
+}
+
+inline Action<void>& newGame() {
+  static Action<void> result;
+  return result;
+}
+
+inline Widget mainMenu() {
+  return menu(
+      command("new game", newGame()),
+      command("quit", quit()));
+}
 
 int main(int /*argc*/, char* /*argv*/[])
 {
