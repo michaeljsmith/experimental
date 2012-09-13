@@ -97,11 +97,16 @@ struct Size {
 
 struct BoundingRect {
   BoundingRect():
+    x(0), y(0),
     w(std::numeric_limits<float>::max()),
     h(std::numeric_limits<float>::max()) {}
   BoundingRect(float _x, float _y, float _w, float _h): x(_x), y(_y), w(_w), h(_h) {}
   float x, y, w, h;
 };
+// ]]]
+
+// [[[ Viewport
+int viewportWidth = -1, viewportHeight = -1;
 // ]]]
 
 // [[[ Fonts
@@ -137,14 +142,17 @@ namespace parameters {Size widgetSize;}
 namespace parameters {BoundingRect widgetBounds;}
 
 inline void renderText(string _text) {
-  //sth_draw_text(stash, 0, 24.0f, parameters::widgetBounds.x, parameters::widgetBounds.y, _text.c_str(), nullptr);
-  sth_draw_text(stash, 0, 24.0f, 0.0f, 10.0f, _text.c_str(), nullptr); asdf
+  float ascender;
+  sth_vmetrics(stash, 0, 24.0f, &ascender, nullptr, nullptr);
+  sth_draw_text(stash, 0, 24.0f, parameters::widgetBounds.x, viewportHeight - parameters::widgetBounds.y - ascender, _text.c_str(), nullptr);
 }
 
 inline Size getTextSize(string _text) {
   float minx, miny, maxx, maxy;
   sth_dim_text(stash, 0, 24.0f, _text.c_str(), &minx, &miny, &maxx, &maxy);
-  return Size(maxx - minx, maxy - miny);
+  float lineHeight;
+  sth_vmetrics(stash, 0, 24.0f, nullptr, nullptr, &lineHeight);
+  return Size(maxx - minx, lineHeight);
   //parameters::widgetSize.w = std::max(parameters::widgetSize.w, maxx - minx);
   //parameters::widgetSize.h = std::max(parameters::widgetSize.h, maxy - miny);
 }
@@ -200,7 +208,7 @@ inline void widgetVertical(Widget widget) {
     CLEANUP(restrictWidget(BoundingRect(0.0f, 0.0f, size.w, size.h)));
     widget();
   }
-  restrictWidget(BoundingRect(0, size.w,
+  restrictWidget(BoundingRect(0, size.h,
       std::numeric_limits<float>::max(),
       std::numeric_limits<float>::max()));
 }
@@ -234,7 +242,6 @@ Class<Widget> mainMenu = menu(
 // ]]]
 
 // [[[ Platform
-int viewportWidth = -1, viewportHeight = -1;
 int done = 0;
 
 inline void initPlatform() {
@@ -248,7 +255,7 @@ inline void initPlatform() {
   viewportWidth = vi->current_w - 20;
   viewportHeight = vi->current_h - 80;
 
-	SDL_WM_SetCaption("FontStash Demo", 0);
+	SDL_WM_SetCaption("Curio", 0);
 }
 
 inline void shutdownPlatform() {
