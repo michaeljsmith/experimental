@@ -41,13 +41,6 @@ template <typename Tag, typename T> struct TrivialSubClass : public T {
 };
 // ]]]
 
-// [[[ Class
-template <typename T> struct Class : public function<T ()> {
-  Class(): function<T ()>() {}
-  template <typename X0> Class(X0 x0): function<T ()>(x0) {}
-};
-// ]]]
-
 // [[[ Vars
 template <typename T> CleanupHandler setVar(T& var, T value) {
   T oldValue = var;
@@ -213,15 +206,11 @@ inline void widgetVertical(Widget widget) {
       std::numeric_limits<float>::max()));
 }
 
-inline Class<Widget> menu(Class<Widget> xClass0, Class<Widget> xClass1) {
-  return [=] () -> Widget {
-    auto x0 = xClass0();
-    auto x1 = xClass1();
-    return Widget([=] () -> void {
-      widgetVertical(x0);
-      widgetVertical(x1);
-    });
-  };
+inline Widget menu(Widget x0, Widget x1) {
+  return Widget([=] () -> void {
+    widgetVertical(x0);
+    widgetVertical(x1);
+  });
 }
 // ]]]
 
@@ -236,9 +225,11 @@ inline Action& quit() {
   return val;
 }
 
-Class<Widget> mainMenu = menu(
-    [] () {return button("new game", newGame());},
-    [] () {return button("quit", quit());});
+inline Widget mainMenu() {
+  return menu(
+    button("new game", newGame()),
+    button("quit", quit()));
+}
 // ]]]
 
 // [[[ Platform
