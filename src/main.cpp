@@ -1,3 +1,4 @@
+// [[[ Prelude
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,54 +13,196 @@
 
 using std::function;
 using std::string;
+// ]]]
 
-template <typename T> struct GlobalSetterScope {
-  T* _location;
-  T _oldValue;
-  GlobalSetterScope(T* location, T newValue): _location(location), _oldValue(*location) {
-    *_location = newValue;
-  }
+// [[[ Cleanup
+typedef function<void ()> CleanupHandler;
 
-  ~GlobalSetterScope() {*_location = _oldValue;}
+struct Cleanup {
+  CleanupHandler _handler;
+  Cleanup(CleanupHandler handler): _handler(handler) {}
+  ~Cleanup() {_handler();}
 };
 
+#define CLEANUP_NAME_DETAIL(a, b) a##b
+#define CLEANUP_NAME(a, b) CLEANUP_NAME_DETAIL(a, b)
+#define CLEANUP(expr) Cleanup CLEANUP_NAME(cleanup, __LINE__) = (expr)
+// ]]]
+
+// [[[ UNIQUE_TAG
 template <int Line> struct SourceLocationTag {};
 #define UNIQUE_TAG SourceLocationTag<__LINE__> // TODO: Make work across TUs!
+// ]]]
 
+// [[[ TrivialSubClass
 template <typename Tag, typename T> struct TrivialSubClass : public T {
   TrivialSubClass(): T() {}
-  template <typename X0> TrivialSubClass(X0 const& x0): T(x0) {}
+  template <typename X0> TrivialSubClass(X0 x0): T(x0) {}
 };
+// ]]]
 
+// [[[ Class
 template <typename T> struct Class : public function<T ()> {
   Class(): function<T ()>() {}
   template <typename X0> Class(X0 x0): function<T ()>(x0) {}
 };
+// ]]]
 
-template <typename T> Class<T> reference(T const& obj) {
+// [[[ Vars
+template <typename T> CleanupHandler setVar(T& var, T value) {
+  T oldValue = var;
+  var = value;
+  return [=,&var] () {
+    var = oldValue;
+  };
+}
+// ]]]
+
+// [[[ Message
+int messageFrameVersion = 0;
+
+template <typename S> struct Message : public function<S> {
+  Message(): Message(function<S>()) {}
+  Message(function<S> fn): function<S>(fn), frameVersion(messageFrameVersion) {}
+
+  template <typename... A> void operator()(A const &... args) {
+    if (frameVersion == messageFrameVersion) {
+      function<S>::operator()(args...);
+    }
+  }
+
+  int frameVersion;
+};
+
+inline CleanupHandler clearMessageHandlers() {
+  auto oldMessageFrameVersion = messageFrameVersion;
+  ++messageFrameVersion;
+
   return [=] () {
-    return obj;
+    messageFrameVersion = oldMessageFrameVersion;
   };
 }
 
-template <typename T> Class<T> instance(Class<T> cls) {
-  auto obj = cls();
-  return reference(obj);
+template <typename S> inline CleanupHandler setMessage(Message<S>& msg, function<S> fn) {
+  return setVar(msg, Message<S>(fn));
 }
+// ]]]
+
+// [[[ Size
+struct Size {
+  Size() {}
+  Size(float _w, float _h): w(_w), h(_h) {}
+  float w, h;
+};
+
+struct BoundingRect {
+  BoundingRect():
+    w(std::numeric_limits<float>::max()),
+    h(std::numeric_limits<float>::max()) {}
+  BoundingRect(float _x, float _y, float _w, float _h): x(_x), y(_y), w(_w), h(_h) {}
+  float x, y, w, h;
+};
+// ]]]
+
+// [[[ Fonts
+struct sth_stash* stash = 0;
+
+inline void addFont(int idx, string path) {
+  if (!sth_add_font(stash, idx, path.c_str()))
+  {
+    printf("Could not add font.\n");
+    exit(1);
+  }
+}
+
+inline void initializeFonts() {
+	stash = sth_create(512,512);
+	if (!stash)
+	{
+		printf("Could not create stash.\n");
+    exit(1);
+	}
+
+  addFont(0, "data/DroidSerif-Regular.ttf");
+	addFont(1, "data/DroidSerif-Italic.ttf");
+  addFont(2, "data/DroidSerif-Bold.ttf");
+  addFont(3, "data/DroidSansJapanese.ttf");
+}
+// ]]]
+
+// [[[ Widgets
+namespace messages {Message<void (Size)> widgetSize;}
+
+namespace parameters {Size widgetSize;}
+namespace parameters {BoundingRect widgetBounds;}
+
+inline void renderText(string _text) {
+  //sth_draw_text(stash, 0, 24.0f, parameters::widgetBounds.x, parameters::widgetBounds.y, _text.c_str(), nullptr);
+  sth_draw_text(stash, 0, 24.0f, 0.0f, 10.0f, _text.c_str(), nullptr); asdf
+}
+
+inline Size getTextSize(string _text) {
+  float minx, miny, maxx, maxy;
+  sth_dim_text(stash, 0, 24.0f, _text.c_str(), &minx, &miny, &maxx, &maxy);
+  return Size(maxx - minx, maxy - miny);
+  //parameters::widgetSize.w = std::max(parameters::widgetSize.w, maxx - minx);
+  //parameters::widgetSize.h = std::max(parameters::widgetSize.h, maxy - miny);
+}
+
+namespace messages {Message<void (string)> text;}
 
 typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Action;
 typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Widget;
 
-function<void (string)> displayText = [] (string) {((void (*)())0)();};
-function<void (Class<Action>)> testHotRegion = [] (Class<Action>) {((void (*)())0)();};
-
-inline Class<Widget> button(string _text, Class<Action> _actionClass) {
+inline Widget text(string _text)
+{
   return [=] () {
-    return Widget([=] () {
-      displayText(_text);
-      testHotRegion(_actionClass);
-    });
+    messages::widgetSize(getTextSize(_text));
+    messages::text(_text);
   };
+}
+
+namespace messages {Message<void (Action)> hotRegion;}
+inline Widget hotRegion(Action _action) {return [=] () {messages::hotRegion(_action);};}
+
+inline Widget wrapHotRegion(Widget _widget, Action _action) {
+  return Widget([=] () {
+    hotRegion(_action);
+    _widget();
+  });
+}
+
+inline Widget button(string _text, Action _action) {
+  return wrapHotRegion(text(_text), _action);
+}
+
+inline Size widgetSize(Widget widget) {
+  CLEANUP(clearMessageHandlers());
+  CLEANUP(setMessage(messages::widgetSize, function<void (Size)>([] (Size size) {
+    parameters::widgetSize = size;
+  })));
+
+  widget();
+  return parameters::widgetSize;
+}
+
+inline CleanupHandler restrictWidget(BoundingRect rect) {
+  auto x = parameters::widgetBounds.x + std::max(0.0f, rect.x);
+  auto y = parameters::widgetBounds.y + std::max(0.0f, rect.y);
+  auto w = std::min(parameters::widgetBounds.w, rect.w);
+  auto h = std::min(parameters::widgetBounds.h, rect.h);
+  return setVar(parameters::widgetBounds, BoundingRect(x, y, w, h));
+}
+
+inline void widgetVertical(Widget widget) {
+  auto size = widgetSize(widget);
+  {
+    CLEANUP(restrictWidget(BoundingRect(0.0f, 0.0f, size.w, size.h)));
+    widget();
+  }
+  restrictWidget(BoundingRect(0, size.w,
+      std::numeric_limits<float>::max(),
+      std::numeric_limits<float>::max()));
 }
 
 inline Class<Widget> menu(Class<Widget> xClass0, Class<Widget> xClass1) {
@@ -67,26 +210,30 @@ inline Class<Widget> menu(Class<Widget> xClass0, Class<Widget> xClass1) {
     auto x0 = xClass0();
     auto x1 = xClass1();
     return Widget([=] () -> void {
-      x0();
-      x1();
+      widgetVertical(x0);
+      widgetVertical(x1);
     });
   };
 }
+// ]]]
 
-inline Class<Action>& newGame() {
-  static Class<Action> val;
+// [[[ Game
+inline Action& newGame() {
+  static Action val;
   return val;
 }
 
-inline Class<Action>& quit() {
-  static Class<Action> val;
+inline Action& quit() {
+  static Action val;
   return val;
 }
 
 Class<Widget> mainMenu = menu(
-    button("new game", newGame()),
-    button("quit", quit()));
+    [] () {return button("new game", newGame());},
+    [] () {return button("quit", quit());});
+// ]]]
 
+// [[[ Platform
 int viewportWidth = -1, viewportHeight = -1;
 int done = 0;
 
@@ -122,34 +269,6 @@ inline void initGl() {
     printf("Could not initialise SDL opengl\n");
     exit(1);
   }
-}
-
-struct sth_stash* stash = 0;
-
-inline void addFont(int idx, string path) {
-  if (!sth_add_font(stash, idx, path.c_str()))
-  {
-    printf("Could not add font.\n");
-    exit(1);
-  }
-}
-
-inline void initializeFonts() {
-	stash = sth_create(512,512);
-	if (!stash)
-	{
-		printf("Could not create stash.\n");
-    exit(1);
-	}
-
-  addFont(0, "data/DroidSerif-Regular.ttf");
-	addFont(1, "data/DroidSerif-Italic.ttf");
-  addFont(2, "data/DroidSerif-Bold.ttf");
-  addFont(3, "data/DroidSansJapanese.ttf");
-}
-
-inline void renderText(string text) {
-  sth_draw_text(stash, 0, 24.0f, 100, 100, text.c_str(), nullptr);
 }
 
 Widget app;
@@ -197,35 +316,11 @@ inline void render() {
   sth_begin_draw(stash);
 
   {
-    GlobalSetterScope<decltype(displayText)> setDisplayText(&displayText, renderText);
-    GlobalSetterScope<decltype(testHotRegion)> setTestHotRegion(&testHotRegion, [] (Class<Action>) {});
+    CLEANUP(clearMessageHandlers());
+    CLEANUP(setMessage(messages::text, function<void (string)>(renderText)));
+    CLEANUP(setVar(parameters::widgetBounds, BoundingRect()));
     app();
   }
-
-  //float sx,sy,dx,dy,lh;
-  //sx = 100; sy = 250;
-
-  //dx = sx; dy = sy;
-  //sth_draw_text(stash, 0,24.0f, dx,dy,"The quick ",&dx);
-  //sth_draw_text(stash, 1,48.0f, dx,dy,"brown ",&dx);
-  //sth_draw_text(stash, 0,24.0f, dx,dy,"fox ",&dx);
-  //sth_vmetrics(stash, 1,24, NULL,NULL,&lh);
-  //dx = sx;
-  //dy -= lh*1.2f;
-  //sth_draw_text(stash, 1,24.0f, dx,dy,"jumps over ",&dx);
-  //sth_draw_text(stash, 2,24.0f, dx,dy,"the lazy ",&dx);
-  //sth_draw_text(stash, 0,24.0f, dx,dy,"dog.",&dx);
-  //dx = sx;
-  //dy -= lh*1.2f;
-  //sth_draw_text(stash, 0,12.0f, dx,dy,"Now is the time for all good men to come to the aid of the party.",&dx);
-  //sth_vmetrics(stash, 1,12, NULL,NULL,&lh);
-  //dx = sx;
-  //dy -= lh*1.2f*2;
-  //sth_draw_text(stash, 1,18.0f, dx,dy,"Ég get etið gler án þess að meiða mig.",&dx);
-  //sth_vmetrics(stash, 1,18, NULL,NULL,&lh);
-  //dx = sx;
-  //dy -= lh*1.2f;
-  //sth_draw_text(stash, 3,18.0f, dx,dy,"私はガラスを食べられます。それは私を傷つけません。",&dx);
 
   sth_end_draw(stash);
 
@@ -252,4 +347,5 @@ int main(int /*argc*/, char* /*argv*/[])
 
 	return 0;
 }
+// ]]]
 
