@@ -256,12 +256,22 @@ inline Widget menu(Widget x0, Widget x1) {
 // ]]]
 
 // [[[ Game
-Action newGame = [] () {((void (*)())0)();};
+Widget app;
+
+Action back = [] () {((void (*)())0)();};
+
+inline Widget optionsMenu() {
+  return menu(
+    button("foo", [] () {((void (*)())0)();}),
+    button("back", back));
+}
+
 Action quit = [] () {((void (*)())0)();};
 
 inline Widget mainMenu() {
   return menu(
-    button("new game", newGame),
+    button("options", [] () {
+      app = optionsMenu();}),
     button("quit", quit));
 }
 // ]]]
@@ -302,8 +312,6 @@ inline void initGl() {
     exit(1);
   }
 }
-
-Widget app;
 
 inline void handlePendingEvents() {
   SDL_Event event;
