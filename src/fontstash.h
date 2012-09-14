@@ -27,7 +27,7 @@ void sth_begin_draw(struct sth_stash* stash);
 void sth_end_draw(struct sth_stash* stash);
 
 void sth_draw_text(struct sth_stash* stash,
-				   int idx, float size,
+				   int idx, float size, unsigned colour,
 				   float x, float y, const char* string, float* dx);
 
 void sth_dim_text(struct sth_stash* stash, int idx, float size, const char* string,

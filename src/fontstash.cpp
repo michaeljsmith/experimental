@@ -15,7 +15,8 @@
 #define MAX_ROWS 128
 #define MAX_FONTS 4
 #define VERT_COUNT (6*128)
-#define VERT_STRIDE (sizeof(float)*4)
+#define VERT_SIZE 8
+#define VERT_STRIDE (sizeof(float)*VERT_SIZE)
 
 static unsigned int hashint(unsigned int a)
 {
@@ -70,7 +71,7 @@ struct sth_stash
 	struct sth_row rows[MAX_ROWS];
 	int nrows;
 	struct sth_font fonts[MAX_FONTS];
-	float verts[4*VERT_COUNT];
+	float verts[VERT_SIZE*VERT_COUNT];
 	int nverts;
 	int drawing;
 };
@@ -313,13 +314,17 @@ static int get_quad(struct sth_stash* stash, struct sth_font* fnt, unsigned int 
 	return 1;
 }
 
-static float* setv(float* v, float x, float y, float s, float t)
+static float* setv(float* v, float x, float y, float s, float t, unsigned colour)
 {
 	v[0] = x;
 	v[1] = y;
 	v[2] = s;
 	v[3] = t;
-	return v+4;
+	v[4] = (float)((colour >> 24) & 0xFF) / 255.0f;
+	v[5] = (float)((colour >> 16) & 0xFF) / 255.0f;
+	v[6] = (float)((colour >> 8) & 0xFF) / 255.0f;
+	v[7] = (float)((colour >> 0) & 0xFF) / 255.0f;
+	return v+VERT_SIZE;
 }
 
 static void flush_draw(struct sth_stash* stash)
@@ -329,10 +334,13 @@ static void flush_draw(struct sth_stash* stash)
 
 	glBindTexture(GL_TEXTURE_2D, stash->tex);
 	glEnable(GL_TEXTURE_2D);
+  glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	glEnableClientState(GL_COLOR_ARRAY);
 	glVertexPointer(2, GL_FLOAT, VERT_STRIDE, stash->verts);
 	glTexCoordPointer(2, GL_FLOAT, VERT_STRIDE, stash->verts+2);
+	glColorPointer(4, GL_FLOAT, VERT_STRIDE, stash->verts+4);
 	glDrawArrays(GL_TRIANGLES, 0, stash->nverts);
 	glDisable(GL_TEXTURE_2D);
 	glDisableClientState(GL_VERTEX_ARRAY);
@@ -353,31 +361,12 @@ void sth_end_draw(struct sth_stash* stash)
 	if (stash == NULL) return;
 	if (!stash->drawing) return;
 
-/*
-	// Debug dump.
-	if (stash->nverts+6 < VERT_COUNT)
-	{
-		float x = 500, y = 100;
-		float* v = &stash->verts[stash->nverts*4];
-
-		v = setv(v, x, y, 0, 0);
-		v = setv(v, x+stash->tw, y, 1, 0);
-		v = setv(v, x+stash->tw, y+stash->th, 1, 1);
-
-		v = setv(v, x, y, 0, 0);
-		v = setv(v, x+stash->tw, y+stash->th, 1, 1);
-		v = setv(v, x, y+stash->th, 0, 1);
-
-		stash->nverts += 6;
-	}
-*/
-
 	flush_draw(stash);
 	stash->drawing = 0;
 }
 
 void sth_draw_text(struct sth_stash* stash,
-				   int idx, float size,
+				   int idx, float size, unsigned colour,
 				   float x, float y,
 				   const char* s, float* dx)
 {
@@ -403,15 +392,15 @@ void sth_draw_text(struct sth_stash* stash,
 
 		if (!get_quad(stash, fnt, codepoint, isize, &x, &y, &q)) continue;
 
-		v = &stash->verts[stash->nverts*4];
+		v = &stash->verts[stash->nverts*VERT_SIZE];
 
-		v = setv(v, q.x0, q.y0, q.s0, q.t0);
-		v = setv(v, q.x1, q.y0, q.s1, q.t0);
-		v = setv(v, q.x1, q.y1, q.s1, q.t1);
+		v = setv(v, q.x0, q.y0, q.s0, q.t0, colour);
+		v = setv(v, q.x1, q.y0, q.s1, q.t0, colour);
+		v = setv(v, q.x1, q.y1, q.s1, q.t1, colour);
 
-		v = setv(v, q.x0, q.y0, q.s0, q.t0);
-		v = setv(v, q.x1, q.y1, q.s1, q.t1);
-		v = setv(v, q.x0, q.y1, q.s0, q.t1);
+		v = setv(v, q.x0, q.y0, q.s0, q.t0, colour);
+		v = setv(v, q.x1, q.y1, q.s1, q.t1, colour);
+		v = setv(v, q.x0, q.y1, q.s0, q.t1, colour);
 
 		stash->nverts += 6;
 	}

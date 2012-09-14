@@ -141,8 +141,12 @@ inline void initializeFonts() {
 }
 // ]]]
 
-// [[[ Actions
+// [[[ Action
 typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Action;
+// ]]]
+
+// [[[ Expression
+template <typename T> using Expression = TrivialSubClass<UNIQUE_TAG, function<T ()>>;
 // ]]]
 
 // [[[ Widgets
@@ -151,10 +155,12 @@ namespace messages {Message<void (Size)> widgetSize;}
 namespace parameters {Size widgetSize;}
 namespace parameters {BoundingRect widgetBounds;}
 
+namespace parameters {unsigned colour;}
+
 inline void renderText(string _text) {
   float ascender;
   sth_vmetrics(stash, 0, 24.0f, &ascender, nullptr, nullptr);
-  sth_draw_text(stash, 0, 24.0f, parameters::widgetBounds.x, viewportHeight - parameters::widgetBounds.y - ascender, _text.c_str(), nullptr);
+  sth_draw_text(stash, 0, 24.0f, parameters::colour, parameters::widgetBounds.x, viewportHeight - parameters::widgetBounds.y - ascender, _text.c_str(), nullptr);
 }
 
 inline Size getTextSize(string _text) {
@@ -163,8 +169,6 @@ inline Size getTextSize(string _text) {
   float lineHeight;
   sth_vmetrics(stash, 0, 24.0f, nullptr, nullptr, &lineHeight);
   return Size(maxx - minx, lineHeight);
-  //parameters::widgetSize.w = std::max(parameters::widgetSize.w, maxx - minx);
-  //parameters::widgetSize.h = std::max(parameters::widgetSize.h, maxy - miny);
 }
 
 namespace parameters {Position clickPos;}
@@ -188,8 +192,6 @@ inline CleanupHandler widgetRoot() {
 
 typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Widget;
 
-Widget nullWidget = [] () {};
-
 inline Widget text(string _text)
 {
   return [=] () {
@@ -207,8 +209,26 @@ inline Widget inHotRegion(Action _action, Widget _widget) {
   });
 }
 
+inline Widget withColour(Expression<unsigned> _colour, Widget _target) {
+  return Widget([=] () {
+    CLEANUP(setVar(parameters::colour, _colour()));
+    _target();
+  });
+}
+
+namespace parameters {bool selected;}
+
+template <typename T> Expression<T> ifSelected(T trueCase, T falseCase) {
+  return [=] () {
+    return parameters::selected ? trueCase : falseCase;
+  };
+}
+
 inline Widget button(string _text, Action _action) {
-  return inHotRegion(_action, text(_text));
+  return inHotRegion(_action,
+      withColour(
+        ifSelected(0xFFFF00FFu, 0xFFFFFFFFu),
+        text(_text)));
 }
 
 inline Size widgetSize(Widget widget) {
@@ -249,19 +269,31 @@ inline void widgetVertical(Widget widget) {
       std::numeric_limits<float>::max()));
 }
 
-inline Widget menuCons(Widget head, Widget tail) {
-  return [=] () -> void {
-    widgetVertical(head);
-    tail();
+inline function<void (int)> menuCons(Widget head, function<void (int)> tail) {
+  return [=] (int selectionIdx) -> void {
+    {
+      CLEANUP(setVar(parameters::selected, selectionIdx == 0));
+      widgetVertical(head);
+    }
+
+    tail(selectionIdx - 1);
   };
 }
 
-inline Widget menu() {
-  return nullWidget;
+inline function<void (int)> menuRecurse() {
+  return [] (int) {};
 }
 
-template <typename... A> inline Widget menu(Widget head, A const&... tail) {
-  return menuCons(head, menu(tail...));
+template <typename... A> inline function<void (int)> menuRecurse(Widget head, A const&... tail) {
+  return menuCons(head, menuRecurse(tail...));
+}
+
+template <typename... A> inline Widget menu(A const&... args) {
+  auto _menu = menuRecurse(args...);
+
+  return [=] () {
+    _menu(0);
+  };
 }
 // ]]]
 
