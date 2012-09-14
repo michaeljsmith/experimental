@@ -188,6 +188,8 @@ inline CleanupHandler widgetRoot() {
 
 typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Widget;
 
+Widget nullWidget = [] () {};
+
 inline Widget text(string _text)
 {
   return [=] () {
@@ -198,7 +200,7 @@ inline Widget text(string _text)
 
 namespace messages {Message<void (Action)> hotRegion;}
 
-inline Widget wrapHotRegion(Widget _widget, Action _action) {
+inline Widget inHotRegion(Action _action, Widget _widget) {
   return Widget([=] () {
     messages::hotRegion(_action);
     _widget();
@@ -206,7 +208,7 @@ inline Widget wrapHotRegion(Widget _widget, Action _action) {
 }
 
 inline Widget button(string _text, Action _action) {
-  return wrapHotRegion(text(_text), _action);
+  return inHotRegion(_action, text(_text));
 }
 
 inline Size widgetSize(Widget widget) {
@@ -247,20 +249,30 @@ inline void widgetVertical(Widget widget) {
       std::numeric_limits<float>::max()));
 }
 
+inline Widget menuCons(Widget head, Widget tail) {
+  return [=] () -> void {
+    widgetVertical(head);
+    tail();
+  };
+}
+
+inline Widget menu() {
+  return nullWidget;
+}
+
+inline Widget menu(Widget x0) {
+  return menuCons(x0, menu());
+}
+
 inline Widget menu(Widget x0, Widget x1) {
-  return Widget([=] () -> void {
-    widgetVertical(x0);
-    widgetVertical(x1);
-  });
+  return menuCons(x0, menu(x1));
 }
 // ]]]
 
 // [[[ Game
 Widget app;
 
-Action back = [] () {((void (*)())0)();};
-
-inline Widget optionsMenu() {
+inline Widget optionsMenu(Action back) {
   return menu(
     button("foo", [] () {((void (*)())0)();}),
     button("back", back));
@@ -269,9 +281,16 @@ inline Widget optionsMenu() {
 Action quit = [] () {((void (*)())0)();};
 
 inline Widget mainMenu() {
+
+  // What to do when options is selected.
+  Action _optionsMenuAction = [] () {
+    app = optionsMenu([=] () {
+      app = mainMenu();
+    });
+  };
+
   return menu(
-    button("options", [] () {
-      app = optionsMenu();}),
+    button("options", _optionsMenuAction),
     button("quit", quit));
 }
 // ]]]
