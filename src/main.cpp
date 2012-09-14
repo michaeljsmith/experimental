@@ -260,12 +260,8 @@ inline Widget menu() {
   return nullWidget;
 }
 
-inline Widget menu(Widget x0) {
-  return menuCons(x0, menu());
-}
-
-inline Widget menu(Widget x0, Widget x1) {
-  return menuCons(x0, menu(x1));
+template <typename... A> inline Widget menu(Widget head, A const&... tail) {
+  return menuCons(head, menu(tail...));
 }
 // ]]]
 
