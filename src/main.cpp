@@ -96,6 +96,19 @@ struct BoundingRect {
   BoundingRect(float _x, float _y, float _w, float _h): x(_x), y(_y), w(_w), h(_h) {}
   float x, y, w, h;
 };
+
+struct Position {
+  Position() {}
+  Position(float _x, float _y): x(_x), y(_y) {}
+  float x, y;
+};
+
+inline bool positionInBounds(Position pos, BoundingRect bounds) {
+  return (pos.x >= bounds.x &&
+          pos.y >= bounds.y &&
+          pos.x < bounds.x + bounds.w &&
+          pos.y < bounds.y + bounds.h);
+}
 // ]]]
 
 // [[[ Viewport
@@ -128,6 +141,10 @@ inline void initializeFonts() {
 }
 // ]]]
 
+// [[[ Actions
+typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Action;
+// ]]]
+
 // [[[ Widgets
 namespace messages {Message<void (Size)> widgetSize;}
 
@@ -150,9 +167,25 @@ inline Size getTextSize(string _text) {
   //parameters::widgetSize.h = std::max(parameters::widgetSize.h, maxy - miny);
 }
 
+namespace parameters {Position clickPos;}
+
+inline void testHotRegion(Action action) {
+  if (positionInBounds(parameters::clickPos, parameters::widgetBounds)) {
+    action();
+  }
+}
+
 namespace messages {Message<void (string)> text;}
 
-typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Action;
+inline CleanupHandler widgetRoot() {
+  auto h0 = clearMessageHandlers();
+  auto h1 = setVar(parameters::widgetBounds, BoundingRect());
+  return [=] () {
+    h0();
+    h1();
+  };
+}
+
 typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Widget;
 
 inline Widget text(string _text)
@@ -164,11 +197,10 @@ inline Widget text(string _text)
 }
 
 namespace messages {Message<void (Action)> hotRegion;}
-inline Widget hotRegion(Action _action) {return [=] () {messages::hotRegion(_action);};}
 
 inline Widget wrapHotRegion(Widget _widget, Action _action) {
   return Widget([=] () {
-    hotRegion(_action);
+    messages::hotRegion(_action);
     _widget();
   });
 }
@@ -185,6 +217,15 @@ inline Size widgetSize(Widget widget) {
 
   widget();
   return parameters::widgetSize;
+}
+
+inline void handleClick(float x, float y, Widget widget) {
+  CLEANUP(widgetRoot());
+
+  CLEANUP(setMessage(messages::hotRegion, function<void (Action)>(testHotRegion)));
+  CLEANUP(setVar(parameters::clickPos, Position(x, y)));
+
+  widget();
 }
 
 inline CleanupHandler restrictWidget(BoundingRect rect) {
@@ -215,20 +256,13 @@ inline Widget menu(Widget x0, Widget x1) {
 // ]]]
 
 // [[[ Game
-inline Action& newGame() {
-  static Action val;
-  return val;
-}
-
-inline Action& quit() {
-  static Action val;
-  return val;
-}
+Action newGame = [] () {((void (*)())0)();};
+Action quit = [] () {((void (*)())0)();};
 
 inline Widget mainMenu() {
   return menu(
-    button("new game", newGame()),
-    button("quit", quit()));
+    button("new game", newGame),
+    button("quit", quit));
 }
 // ]]]
 
@@ -280,6 +314,9 @@ inline void handlePendingEvents() {
       case SDL_MOUSEMOTION:
         break;
       case SDL_MOUSEBUTTONDOWN:
+        if (event.button.button) {
+          handleClick(event.button.x, event.button.y, app);
+        }
         break;
       case SDL_KEYDOWN:
         if (event.key.keysym.sym == SDLK_ESCAPE)
@@ -314,9 +351,8 @@ inline void render() {
   sth_begin_draw(stash);
 
   {
-    CLEANUP(clearMessageHandlers());
+    CLEANUP(widgetRoot());
     CLEANUP(setMessage(messages::text, function<void (string)>(renderText)));
-    CLEANUP(setVar(parameters::widgetBounds, BoundingRect()));
     app();
   }
 
@@ -346,4 +382,3 @@ int main(int /*argc*/, char* /*argv*/[])
 	return 0;
 }
 // ]]]
-
