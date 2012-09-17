@@ -141,185 +141,193 @@ inline void initializeFonts() {
 }
 // ]]]
 
-// [[[ Action
-typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Action;
+// [[[ old::Action
+namespace old {
+  typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Action;
+}
 // ]]]
 
-// [[[ Expression
-template <typename T> using Expression = TrivialSubClass<UNIQUE_TAG, function<T ()>>;
+// [[[ old::Expression
+namespace old {
+  template <typename T> using Expression = TrivialSubClass<UNIQUE_TAG, function<T ()>>;
+}
 // ]]]
 
-// [[[ Widgets
-namespace messages {Message<void (Size)> widgetSize;}
+// [[[ old::Widgets
+namespace old {
+  namespace messages {Message<void (Size)> widgetSize;}
 
-namespace parameters {Size widgetSize;}
-namespace parameters {BoundingRect widgetBounds;}
+  namespace parameters {Size widgetSize;}
+  namespace parameters {BoundingRect widgetBounds;}
 
-namespace parameters {unsigned colour;}
+  namespace parameters {unsigned colour;}
 
-inline void renderText(string _text) {
-  float ascender;
-  sth_vmetrics(stash, 0, 24.0f, &ascender, nullptr, nullptr);
-  sth_draw_text(stash, 0, 24.0f, parameters::colour, parameters::widgetBounds.x, viewportHeight - parameters::widgetBounds.y - ascender, _text.c_str(), nullptr);
-}
-
-inline Size getTextSize(string _text) {
-  float minx, miny, maxx, maxy;
-  sth_dim_text(stash, 0, 24.0f, _text.c_str(), &minx, &miny, &maxx, &maxy);
-  float lineHeight;
-  sth_vmetrics(stash, 0, 24.0f, nullptr, nullptr, &lineHeight);
-  return Size(maxx - minx, lineHeight);
-}
-
-namespace parameters {Position clickPos;}
-
-inline void testHotRegion(Action action) {
-  if (positionInBounds(parameters::clickPos, parameters::widgetBounds)) {
-    action();
+  inline void renderText(string _text) {
+    float ascender;
+    sth_vmetrics(stash, 0, 24.0f, &ascender, nullptr, nullptr);
+    sth_draw_text(stash, 0, 24.0f, parameters::colour, parameters::widgetBounds.x, viewportHeight - parameters::widgetBounds.y - ascender, _text.c_str(), nullptr);
   }
-}
 
-namespace messages {Message<void (string)> text;}
+  inline Size getTextSize(string _text) {
+    float minx, miny, maxx, maxy;
+    sth_dim_text(stash, 0, 24.0f, _text.c_str(), &minx, &miny, &maxx, &maxy);
+    float lineHeight;
+    sth_vmetrics(stash, 0, 24.0f, nullptr, nullptr, &lineHeight);
+    return Size(maxx - minx, lineHeight);
+  }
 
-inline CleanupHandler widgetRoot() {
-  auto h0 = clearMessageHandlers();
-  auto h1 = setVar(parameters::widgetBounds, BoundingRect());
-  return [=] () {
-    h0();
-    h1();
-  };
-}
+  namespace parameters {Position clickPos;}
 
-typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Widget;
+  inline void testHotRegion(Action action) {
+    if (positionInBounds(parameters::clickPos, parameters::widgetBounds)) {
+      action();
+    }
+  }
 
-inline Widget text(string _text)
-{
-  return [=] () {
-    messages::widgetSize(getTextSize(_text));
-    messages::text(_text);
-  };
-}
+  namespace messages {Message<void (string)> text;}
 
-namespace messages {Message<void (Action)> hotRegion;}
+  inline CleanupHandler widgetRoot() {
+    auto h0 = clearMessageHandlers();
+    auto h1 = setVar(parameters::widgetBounds, BoundingRect());
+    return [=] () {
+      h0();
+      h1();
+    };
+  }
 
-inline Widget inHotRegion(Action _action, Widget _widget) {
-  return Widget([=] () {
-    messages::hotRegion(_action);
-    _widget();
-  });
-}
+  typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Widget;
 
-inline Widget withColour(Expression<unsigned> _colour, Widget _target) {
-  return Widget([=] () {
-    CLEANUP(setVar(parameters::colour, _colour()));
-    _target();
-  });
-}
-
-namespace parameters {bool selected;}
-
-template <typename T> Expression<T> ifSelected(T trueCase, T falseCase) {
-  return [=] () {
-    return parameters::selected ? trueCase : falseCase;
-  };
-}
-
-inline Widget button(string _text, Action _action) {
-  return inHotRegion(_action,
-      withColour(
-        ifSelected(0xFFFF00FFu, 0xFFFFFFFFu),
-        text(_text)));
-}
-
-inline Size widgetSize(Widget widget) {
-  CLEANUP(clearMessageHandlers());
-  CLEANUP(setMessage(messages::widgetSize, function<void (Size)>([] (Size size) {
-    parameters::widgetSize = size;
-  })));
-
-  widget();
-  return parameters::widgetSize;
-}
-
-inline void handleClick(float x, float y, Widget widget) {
-  CLEANUP(widgetRoot());
-
-  CLEANUP(setMessage(messages::hotRegion, function<void (Action)>(testHotRegion)));
-  CLEANUP(setVar(parameters::clickPos, Position(x, y)));
-
-  widget();
-}
-
-inline CleanupHandler restrictWidget(BoundingRect rect) {
-  auto x = parameters::widgetBounds.x + std::max(0.0f, rect.x);
-  auto y = parameters::widgetBounds.y + std::max(0.0f, rect.y);
-  auto w = std::min(parameters::widgetBounds.w, rect.w);
-  auto h = std::min(parameters::widgetBounds.h, rect.h);
-  return setVar(parameters::widgetBounds, BoundingRect(x, y, w, h));
-}
-
-inline void widgetVertical(Widget widget) {
-  auto size = widgetSize(widget);
+  inline Widget text(string _text)
   {
-    CLEANUP(restrictWidget(BoundingRect(0.0f, 0.0f, size.w, size.h)));
+    return [=] () {
+      messages::widgetSize(getTextSize(_text));
+      messages::text(_text);
+    };
+  }
+
+  namespace messages {Message<void (Action)> hotRegion;}
+
+  inline Widget inHotRegion(Action _action, Widget _widget) {
+    return Widget([=] () {
+      messages::hotRegion(_action);
+      _widget();
+    });
+  }
+
+  inline Widget withColour(Expression<unsigned> _colour, Widget _target) {
+    return Widget([=] () {
+      CLEANUP(setVar(parameters::colour, _colour()));
+      _target();
+    });
+  }
+
+  namespace parameters {bool selected;}
+
+  template <typename T> Expression<T> ifSelected(T trueCase, T falseCase) {
+    return [=] () {
+      return parameters::selected ? trueCase : falseCase;
+    };
+  }
+
+  inline Widget button(string _text, Action _action) {
+    return inHotRegion(_action,
+        withColour(
+          ifSelected(0xFFFF00FFu, 0xFFFFFFFFu),
+          text(_text)));
+  }
+
+  inline Size widgetSize(Widget widget) {
+    CLEANUP(clearMessageHandlers());
+    CLEANUP(setMessage(messages::widgetSize, function<void (Size)>([] (Size size) {
+      parameters::widgetSize = size;
+    })));
+
+    widget();
+    return parameters::widgetSize;
+  }
+
+  inline void handleClick(float x, float y, Widget widget) {
+    CLEANUP(widgetRoot());
+
+    CLEANUP(setMessage(messages::hotRegion, function<void (Action)>(testHotRegion)));
+    CLEANUP(setVar(parameters::clickPos, Position(x, y)));
+
     widget();
   }
-  restrictWidget(BoundingRect(0, size.h,
-      std::numeric_limits<float>::max(),
-      std::numeric_limits<float>::max()));
-}
 
-inline function<void (int)> menuCons(Widget head, function<void (int)> tail) {
-  return [=] (int selectionIdx) -> void {
+  inline CleanupHandler restrictWidget(BoundingRect rect) {
+    auto x = parameters::widgetBounds.x + std::max(0.0f, rect.x);
+    auto y = parameters::widgetBounds.y + std::max(0.0f, rect.y);
+    auto w = std::min(parameters::widgetBounds.w, rect.w);
+    auto h = std::min(parameters::widgetBounds.h, rect.h);
+    return setVar(parameters::widgetBounds, BoundingRect(x, y, w, h));
+  }
+
+  inline void widgetVertical(Widget widget) {
+    auto size = widgetSize(widget);
     {
-      CLEANUP(setVar(parameters::selected, selectionIdx == 0));
-      widgetVertical(head);
+      CLEANUP(restrictWidget(BoundingRect(0.0f, 0.0f, size.w, size.h)));
+      widget();
     }
+    restrictWidget(BoundingRect(0, size.h,
+        std::numeric_limits<float>::max(),
+        std::numeric_limits<float>::max()));
+  }
 
-    tail(selectionIdx - 1);
-  };
-}
+  inline function<void (int)> menuCons(Widget head, function<void (int)> tail) {
+    return [=] (int selectionIdx) -> void {
+      {
+        CLEANUP(setVar(parameters::selected, selectionIdx == 0));
+        widgetVertical(head);
+      }
 
-inline function<void (int)> menuRecurse() {
-  return [] (int) {};
-}
+      tail(selectionIdx - 1);
+    };
+  }
 
-template <typename... A> inline function<void (int)> menuRecurse(Widget head, A const&... tail) {
-  return menuCons(head, menuRecurse(tail...));
-}
+  inline function<void (int)> menuRecurse() {
+    return [] (int) {};
+  }
 
-template <typename... A> inline Widget menu(A const&... args) {
-  auto _menu = menuRecurse(args...);
+  template <typename... A> inline function<void (int)> menuRecurse(Widget head, A const&... tail) {
+    return menuCons(head, menuRecurse(tail...));
+  }
 
-  return [=] () {
-    _menu(0);
-  };
+  template <typename... A> inline Widget menu(A const&... args) {
+    auto _menu = menuRecurse(args...);
+
+    return [=] () {
+      _menu(0);
+    };
+  }
 }
 // ]]]
 
-// [[[ Game
-Widget app;
+// [[[ old::Game
+namespace old {
+  Widget app;
 
-inline Widget optionsMenu(Action back) {
-  return menu(
-    button("foo", [] () {((void (*)())0)();}),
-    button("back", back));
-}
+  inline Widget optionsMenu(Action back) {
+    return menu(
+      button("foo", [] () {((void (*)())0)();}),
+      button("back", back));
+  }
 
-Action quit = [] () {((void (*)())0)();};
+  Action quit = [] () {((void (*)())0)();};
 
-inline Widget mainMenu() {
+  inline Widget mainMenu() {
 
-  // What to do when options is selected.
-  Action _optionsMenuAction = [] () {
-    app = optionsMenu([=] () {
-      app = mainMenu();
-    });
-  };
+    // What to do when options is selected.
+    Action _optionsMenuAction = [] () {
+      app = optionsMenu([=] () {
+        app = mainMenu();
+      });
+    };
 
-  return menu(
-    button("options", _optionsMenuAction),
-    button("quit", quit));
+    return menu(
+      button("options", _optionsMenuAction),
+      button("quit", quit));
+  }
 }
 // ]]]
 
@@ -370,7 +378,7 @@ inline void handlePendingEvents() {
         break;
       case SDL_MOUSEBUTTONDOWN:
         if (event.button.button) {
-          handleClick(event.button.x, event.button.y, app);
+          old::handleClick(event.button.x, event.button.y, old::app);
         }
         break;
       case SDL_KEYDOWN:
@@ -406,9 +414,9 @@ inline void render() {
   sth_begin_draw(stash);
 
   {
-    CLEANUP(widgetRoot());
-    CLEANUP(setMessage(messages::text, function<void (string)>(renderText)));
-    app();
+    CLEANUP(old::widgetRoot());
+    CLEANUP(setMessage(old::messages::text, function<void (string)>(old::renderText)));
+    old::app();
   }
 
   sth_end_draw(stash);
@@ -424,7 +432,7 @@ int main(int /*argc*/, char* /*argv*/[])
 
   initializeFonts();
 
-  app = mainMenu();
+  old::app = old::mainMenu();
 
 	while (!done)
 	{
