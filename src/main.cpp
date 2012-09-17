@@ -141,23 +141,6 @@ inline void initializeFonts() {
 }
 // ]]]
 
-// [[[ Reference
-template <typename T> struct Reference {
-  function<T ()> getter; 
-  function<void (T)> setter; 
-};
-// ]]]
-
-// [[[ Primitive
-template <typename T> struct Primitive {
-  T value;
-};
-
-template <typename T> Reference<T> primitive(T initialVal) {
-  return new Primitive<T>(initialVal);
-}
-// ]]]
-
 // [[[ Action
 typedef TrivialSubClass<UNIQUE_TAG, function<void ()>> Action;
 // ]]]
@@ -306,11 +289,10 @@ template <typename... A> inline function<void (int)> menuRecurse(Widget head, A 
 }
 
 template <typename... A> inline Widget menu(A const&... args) {
-  auto _selection = primitive(0);
-
   auto _menu = menuRecurse(args...);
+
   return [=] () {
-    _menu(_selection);
+    _menu(0);
   };
 }
 // ]]]
