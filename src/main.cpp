@@ -342,7 +342,13 @@ inline function<T ()> instance(function<T ()> cls) {
 // ]]]
 
 // [[[ Action
-struct Action {};
+typedef TrivialSubClass<UNIQUE_TAG, function<void()>> Action;
+
+inline function<Action()> action(function<void()> _fn) {
+  return [=] () -> Action {
+    return Action(_fn);
+  };
+}
 // ]]]
 
 // [[[ Expression
@@ -362,6 +368,10 @@ namespace messages {Message<void (string)> text;}
 namespace parameters {BoundingRect widgetBounds;}
 
 namespace parameters {unsigned colour;}
+
+namespace messages {Message<void (Action)> hotRegion;}
+
+namespace parameters {Position clickPos;}
 
 inline void renderText(string _text) {
   float ascender;
@@ -400,8 +410,19 @@ inline void renderWidget(function<Widget ()> widget) {
   glEnable(GL_DEPTH_TEST);
 }
 
-inline void handleClick(float /*x*/, float /*y*/, function<Widget ()> /*widget*/) {
-  ((void (*)())0)();
+inline void testHotRegion(Action action) {
+  if (positionInBounds(parameters::clickPos, parameters::widgetBounds)) {
+    action();
+  }
+}
+
+inline void handleClick(float x, float y, function<Widget()> widget) {
+  CLEANUP(clearMessageHandlers());
+  CLEANUP(setVar(parameters::widgetBounds, BoundingRect()));
+  CLEANUP(setMessage(messages::hotRegion, function<void(Action)>(testHotRegion)));
+  CLEANUP(setVar(parameters::clickPos, Position(x, y)));
+
+  widget();
 }
 
 template <typename T> function<Expression<T>()> varExpr(T const& var) {
@@ -442,17 +463,26 @@ inline function<Widget ()> text(string _text)
   };
 }
 
-inline function<Widget ()> withColour(function<Expression<unsigned> ()>  _colour, function<Widget ()> _target) {
+inline function<Widget()> withColour(function<Expression<unsigned> ()>  _colour, function<Widget ()> _target) {
   return [=] () -> Widget {
     CLEANUP(setVar(parameters::colour, _colour()()));
     return _target();
   };
 }
 
-inline function<Widget ()> button(string _text, function<Action ()> /*action*/) {
-  return withColour(
-      ifSelected(0xFFFF00FFu, 0xFFFFFFFFu),
-      text(_text));
+inline function<Widget()> inHotRegion(function<Action()> _action, function<Widget()> _widget) {
+  return [=] () -> Widget {
+    auto action = _action();
+    messages::hotRegion(action);
+    return _widget();
+  };
+}
+
+inline function<Widget ()> button(string _text, function<Action ()> _action) {
+  return inHotRegion(_action,
+      withColour(
+        ifSelected(0xFFFF00FFu, 0xFFFFFFFFu),
+        text(_text)));
 }
 
 inline Size widgetSize(function<Widget ()> widget) {
@@ -521,11 +551,11 @@ function<Widget ()> app;
 
 inline function<Widget ()> optionsMenu(function<Action ()> back) {
   return menu(
-    button("foo", [] ( )-> Action {((void (*)())0)(); return Action();}),
+    button("foo", action([](){((void (*)())0)();})),
     button("back", back));
 }
 
-function<Action ()> quit = [] ( )-> Action {((void (*)())0)(); return Action();};
+function<Action ()> quit = action([](){((void (*)())0)();});
 
 inline Widget mainMenu() {
 
@@ -537,7 +567,7 @@ inline Widget mainMenu() {
   //};
 
   return menu(
-    button("options", [] ( )-> Action {((void (*)())0)(); return Action();}/*_optionsMenuAction*/),
+    button("options", action([] () {((void(*)())0)();})/*_optionsMenuAction*/),
     button("quit", quit))();
 }
 // ]]]
