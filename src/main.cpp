@@ -60,6 +60,9 @@ template <typename S> struct Message : public function<S> {
 
   template <typename... A> void operator()(A const &... args) {
     if (frameVersion == messageFrameVersion) {
+      if ((*this) == nullptr) {
+        ((void(*)())0)();
+      }
       function<S>::operator()(args...);
     }
   }
@@ -333,9 +336,8 @@ namespace old {
 
 // [[[ instance
 template <typename T>
-inline function<T ()> instance(function<T ()> /*cls*/) {
-  ((void (*)())0)();
-  return function<T ()>();
+inline function<T ()> instance(function<T ()> cls) {
+  return cls;
 }
 // ]]]
 
@@ -343,8 +345,29 @@ inline function<T ()> instance(function<T ()> /*cls*/) {
 struct Action {};
 // ]]]
 
+// [[[ Expression
+template <typename T> using Expression = TrivialSubClass<UNIQUE_TAG, function<T ()>>;
+// ]]]
+
 // [[[ Widgets
 struct Widget {};
+
+namespace parameters {bool selected;}
+
+namespace messages {Message<void (Size)> widgetSize;}
+namespace parameters {Size widgetSize;}
+
+namespace messages {Message<void (string)> text;}
+
+namespace parameters {BoundingRect widgetBounds;}
+
+namespace parameters {unsigned colour;}
+
+inline void renderText(string _text) {
+  float ascender;
+  sth_vmetrics(stash, 0, 24.0f, &ascender, nullptr, nullptr);
+  sth_draw_text(stash, 0, 24.0f, parameters::colour, parameters::widgetBounds.x, viewportHeight - parameters::widgetBounds.y - ascender, _text.c_str(), nullptr);
+}
 
 inline void renderWidget(function<Widget ()> widget) {
   glViewport(0, 0, viewportWidth, viewportHeight);
@@ -366,9 +389,9 @@ inline void renderWidget(function<Widget ()> widget) {
   sth_begin_draw(stash);
 
   {
-    ((void (*)())0)();
-    //CLEANUP(widgetRoot());
-    //CLEANUP(setMessage(messages::text, function<void (string)>(renderText)));
+    CLEANUP(clearMessageHandlers());
+    CLEANUP(setVar(parameters::widgetBounds, BoundingRect()));
+    CLEANUP(setMessage(messages::text, function<void (string)>(renderText)));
     widget();
   }
 
@@ -381,15 +404,115 @@ inline void handleClick(float /*x*/, float /*y*/, function<Widget ()> /*widget*/
   ((void (*)())0)();
 }
 
-inline function<Widget ()> button(string /*text*/, function<Action ()> /*action*/) {
-  ((void (*)())0)();
-  return function<Widget ()>();
+template <typename T> function<Expression<T>()> varExpr(T const& var) {
+  return [&] () -> Expression<T> {
+    return [&] () -> T {
+      return var;
+    };
+  };
+}
+
+template <typename T> function<Expression<T>()> ifExpr(function<Expression<bool>()> test, T trueCase, T falseCase) {
+  return [=] () -> Expression<T> {
+    auto _test = test();
+    return [=] () -> T {
+      return _test() ? trueCase : falseCase;
+    };
+  };
+}
+
+template <typename T> function<Expression<T>()> ifSelected(T trueCase, T falseCase) {
+  return ifExpr(varExpr(parameters::selected), trueCase, falseCase);
+}
+
+inline Size getTextSize(string _text) {
+  float minx, miny, maxx, maxy;
+  sth_dim_text(stash, 0, 24.0f, _text.c_str(), &minx, &miny, &maxx, &maxy);
+  float lineHeight;
+  sth_vmetrics(stash, 0, 24.0f, nullptr, nullptr, &lineHeight);
+  return Size(maxx - minx, lineHeight);
+}
+
+inline function<Widget ()> text(string _text)
+{
+  return [=] () -> Widget {
+    messages::widgetSize(getTextSize(_text)); // TODO: Call only if widgetSize valid.
+    messages::text(_text);
+    return Widget();
+  };
+}
+
+inline function<Widget ()> withColour(function<Expression<unsigned> ()>  _colour, function<Widget ()> _target) {
+  return [=] () -> Widget {
+    CLEANUP(setVar(parameters::colour, _colour()()));
+    return _target();
+  };
+}
+
+inline function<Widget ()> button(string _text, function<Action ()> /*action*/) {
+  return withColour(
+      ifSelected(0xFFFF00FFu, 0xFFFFFFFFu),
+      text(_text));
+}
+
+inline Size widgetSize(function<Widget ()> widget) {
+  CLEANUP(clearMessageHandlers());
+  CLEANUP(setMessage(messages::widgetSize, function<void (Size)>([] (Size size) {
+    parameters::widgetSize = size;
+  })));
+
+  widget();
+  return parameters::widgetSize;
+}
+
+inline CleanupHandler restrictWidget(BoundingRect rect) {
+  auto x = parameters::widgetBounds.x + std::max(0.0f, rect.x);
+  auto y = parameters::widgetBounds.y + std::max(0.0f, rect.y);
+  auto w = std::min(parameters::widgetBounds.w, rect.w);
+  auto h = std::min(parameters::widgetBounds.h, rect.h);
+  return setVar(parameters::widgetBounds, BoundingRect(x, y, w, h));
+}
+
+inline Widget widgetVertical(function<Widget ()> widget) {
+  Widget result;
+  auto size = widgetSize(widget);
+  {
+    CLEANUP(restrictWidget(BoundingRect(0.0f, 0.0f, size.w, size.h)));
+    result = widget();
+  }
+  restrictWidget(BoundingRect(0, size.h,
+      std::numeric_limits<float>::max(),
+      std::numeric_limits<float>::max()));
+
+  return result;
+}
+
+inline function<Widget ()> menuItem(function<Widget ()> head, bool selected) {
+  return [=] () -> Widget {
+    CLEANUP(setVar(parameters::selected, selected));
+    return widgetVertical(head);
+  };
+}
+
+inline function<Widget ()> menuCons(function<Widget ()> head, function<Widget ()> tail) {
+  return [=] () -> Widget {
+    head();
+    return tail();
+  };
+}
+
+inline function<Widget ()> menuRecurse(int /*selectionIdx*/) {
+  return [] () {return Widget();};
 }
 
 template <typename... A>
-inline function<Widget ()> menu(A const&... /*args*/) {
-  ((void (*)())0)();
-  return function<Widget ()>();
+inline function<Widget ()> menuRecurse(int selectionIdx, function<Widget ()> head, A const&... tail) {
+  return menuCons(menuItem(head, selectionIdx == 0), menuRecurse(selectionIdx - 1, tail...));
+}
+
+template <typename... A>
+inline function<Widget ()> menu(A const&... args) {
+  return menuRecurse(0, args...);
 }
 // ]]]
 
