@@ -331,6 +331,94 @@ namespace old {
 }
 // ]]]
 
+// [[[ instance
+template <typename T>
+inline function<T ()> instance(function<T ()> /*cls*/) {
+  ((void (*)())0)();
+  return function<T ()>();
+}
+// ]]]
+
+// [[[ Action
+struct Action {};
+// ]]]
+
+// [[[ Widgets
+struct Widget {};
+
+inline void renderWidget(function<Widget ()> widget) {
+  glViewport(0, 0, viewportWidth, viewportHeight);
+  glClearColor(0.3f, 0.3f, 0.32f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDisable(GL_TEXTURE_2D);
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  glOrtho(0,viewportWidth,0,viewportHeight,-1,1);
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  glDisable(GL_DEPTH_TEST);
+  glColor4ub(255,255,255,255);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+
+  sth_begin_draw(stash);
+
+  {
+    ((void (*)())0)();
+    //CLEANUP(widgetRoot());
+    //CLEANUP(setMessage(messages::text, function<void (string)>(renderText)));
+    widget();
+  }
+
+  sth_end_draw(stash);
+
+  glEnable(GL_DEPTH_TEST);
+}
+
+inline void handleClick(float /*x*/, float /*y*/, function<Widget ()> /*widget*/) {
+  ((void (*)())0)();
+}
+
+inline function<Widget ()> button(string /*text*/, function<Action ()> /*action*/) {
+  ((void (*)())0)();
+  return function<Widget ()>();
+}
+
+template <typename... A>
+inline function<Widget ()> menu(A const&... /*args*/) {
+  ((void (*)())0)();
+  return function<Widget ()>();
+}
+// ]]]
+
+// [[[ Game
+function<Widget ()> app;
+
+inline function<Widget ()> optionsMenu(function<Action ()> back) {
+  return menu(
+    button("foo", [] ( )-> Action {((void (*)())0)(); return Action();}),
+    button("back", back));
+}
+
+function<Action ()> quit = [] ( )-> Action {((void (*)())0)(); return Action();};
+
+inline Widget mainMenu() {
+
+  //// What to do when options is selected.
+  //Action _optionsMenuAction = [] () {
+  //  app = optionsMenu([=] () {
+  //    app = mainMenu();
+  //  });
+  //};
+
+  return menu(
+    button("options", [] ( )-> Action {((void (*)())0)(); return Action();}/*_optionsMenuAction*/),
+    button("quit", quit))();
+}
+// ]]]
+
 // [[[ Platform
 int done = 0;
 
@@ -378,7 +466,7 @@ inline void handlePendingEvents() {
         break;
       case SDL_MOUSEBUTTONDOWN:
         if (event.button.button) {
-          old::handleClick(event.button.x, event.button.y, old::app);
+          handleClick(event.button.x, event.button.y, app);
         }
         break;
       case SDL_KEYDOWN:
@@ -395,33 +483,8 @@ inline void handlePendingEvents() {
 }
 
 inline void render() {
-  glViewport(0, 0, viewportWidth, viewportHeight);
-  glClearColor(0.3f, 0.3f, 0.32f, 1.0f);
-  glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDisable(GL_TEXTURE_2D);
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  glOrtho(0,viewportWidth,0,viewportHeight,-1,1);
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glDisable(GL_DEPTH_TEST);
-  glColor4ub(255,255,255,255);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+  renderWidget(app);
 
-  sth_begin_draw(stash);
-
-  {
-    CLEANUP(old::widgetRoot());
-    CLEANUP(setMessage(old::messages::text, function<void (string)>(old::renderText)));
-    old::app();
-  }
-
-  sth_end_draw(stash);
-
-  glEnable(GL_DEPTH_TEST);
   SDL_GL_SwapBuffers();
 }
 
@@ -432,7 +495,7 @@ int main(int /*argc*/, char* /*argv*/[])
 
   initializeFonts();
 
-  old::app = old::mainMenu();
+  app = instance(function<Widget ()>(mainMenu));
 
 	while (!done)
 	{
