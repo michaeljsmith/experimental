@@ -357,29 +357,23 @@ inline Widget menu(A const&... args) {
 // ]]]
 
 // [[[ Game
-inline Widget optionsMenu(Action back) {
-  return menu(
+extern Widget app;
+extern Widget mainMenu;
+
+Action back = Action([] () {app = mainMenu;});
+
+Widget optionsMenu = menu(
     button("foo", Action([](){((void (*)())0)();})),
     button("back", back));
-}
 
+Action options = Action([] () {app = optionsMenu;});
 Action quit = Action([](){((void (*)())0)();});
 
-inline Widget mainMenu() {
-
-  //// What to do when options is selected.
-  //Action _optionsMenuAction = [] () {
-  //  app = optionsMenu([=] () {
-  //    app = mainMenu();
-  //  });
-  //};
-
-  return menu(
-    button("options", Action([] () {((void(*)())0)();})/*_optionsMenuAction*/),
+Widget mainMenu = menu(
+    button("options", options),
     button("quit", quit));
-}
 
-auto app = mainMenu();
+Widget app = mainMenu;
 // ]]]
 
 // [[[ Platform
