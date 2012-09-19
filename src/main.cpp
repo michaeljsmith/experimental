@@ -352,7 +352,24 @@ inline function<Action()> action(function<void()> _fn) {
 // ]]]
 
 // [[[ Expression
-template <typename T> using Expression = TrivialSubClass<UNIQUE_TAG, function<T ()>>;
+template <typename T> struct Expression {
+  function<T()> get;
+
+  Expression(function<T()> _get): get(_get) {}
+
+  T operator()() const {
+    return get();
+  }
+};
+// ]]]
+
+// [[[ Reference
+template <typename T> class Reference : public Expression<T> {
+  function<void (T)> set;
+
+  Reference(function<T()> _get, function<void (T)> _set):
+    Expression<T>(_get), set(_set) {}
+};
 // ]]]
 
 // [[[ Widgets
@@ -454,8 +471,7 @@ inline Size getTextSize(string _text) {
   return Size(maxx - minx, lineHeight);
 }
 
-inline function<Widget ()> text(string _text)
-{
+inline function<Widget ()> text(string _text) {
   return [=] () -> Widget {
     messages::widgetSize(getTextSize(_text)); // TODO: Call only if widgetSize valid.
     messages::text(_text);
@@ -547,7 +563,9 @@ inline function<Widget ()> menu(A const&... args) {
 // ]]]
 
 // [[[ Game
-function<Widget ()> app;
+Widget mainMenu();
+
+auto clsApp = primitive<function<Widget ()>>(mainMenu);
 
 inline function<Widget ()> optionsMenu(function<Action ()> back) {
   return menu(
@@ -570,6 +588,8 @@ inline Widget mainMenu() {
     button("options", action([] () {((void(*)())0)();})/*_optionsMenuAction*/),
     button("quit", quit))();
 }
+
+function<Widget()> app = instance(clsApp);
 // ]]]
 
 // [[[ Platform
@@ -647,8 +667,6 @@ int main(int /*argc*/, char* /*argv*/[])
   initGl();
 
   initializeFonts();
-
-  app = instance(function<Widget ()>(mainMenu));
 
 	while (!done)
 	{
