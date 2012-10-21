@@ -1,14 +1,49 @@
 #include <string>
+#include <functional>
 #include "SDL.h"
 #include "SDL_Opengl.h"
 
 #include "fontstash.h"
 
 using std::string;
+using std::function;
 
 int viewportWidth = -1, viewportHeight = -1;
 
 struct sth_stash* stash = 0;
+
+class Object {
+  public:
+    Object(function<void (Object&)> cls): fn(nullImpl) {
+      cls(*this);
+    }
+
+    Object(Object const&) = delete;
+    Object& operator=(Object const&) = delete;
+
+    template <typename S> function<S> getMethod(void* methodId) {
+      return *static_cast<function<S>*>(fn(methodId));
+    }
+
+    template <typename F> void addMethod(void* methodId, F method) {
+      function<void* (void*)> oldFn = fn;
+      fn = [=] (void* givenMethodId) -> void const* {
+        if (givenMethodId == methodId) {
+          return &method;
+        } else {
+          return oldFn(givenMethodId);
+        }
+      };
+    }
+
+  private:
+    static void* nullImpl(void const*) {
+      ((void (*)())nullptr)();
+      return nullptr;
+    }
+
+    function<void* (void const*)> fn;
+};
 
 inline void addFont(int idx, string path) {
   if (!sth_add_font(stash, idx, path.c_str()))
@@ -30,6 +65,18 @@ inline void initializeFonts() {
 	addFont(1, "data/DroidSerif-Italic.ttf");
   addFont(2, "data/DroidSerif-Bold.ttf");
   addFont(3, "data/DroidSansJapanese.ttf");
+}
+
+namespace widgets {
+  int render;
+}
+
+inline void app(Object& self) {
+  self.addMethod(&widgets::render, [&] () mutable {
+    float ascender;
+    sth_vmetrics(stash, 0, 24.0f, &ascender, nullptr, nullptr);
+    sth_draw_text(stash, 0, 24.0f, 0xFF0000FF, 10, viewportHeight - ascender, "Foo!", nullptr);
+  });
 }
 
 int done = 0;
@@ -94,6 +141,8 @@ inline void handlePendingEvents() {
   }
 }
 
+Object _app(app);
+
 inline void render() {
   glViewport(0, 0, viewportWidth, viewportHeight);
   glClearColor(0.3f, 0.3f, 0.32f, 1.0f);
@@ -112,10 +161,7 @@ inline void render() {
   glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
   sth_begin_draw(stash);
-
-  float ascender;
-  sth_vmetrics(stash, 0, 24.0f, &ascender, nullptr, nullptr);
-  sth_draw_text(stash, 0, 24.0f, 0xFF0000FF, 10, viewportHeight - ascender, "Foo!", nullptr);
+  _app.getMethod<void ()>(&widgets::render)();
 
   sth_end_draw(stash);
 
