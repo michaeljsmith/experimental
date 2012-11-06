@@ -1,189 +1,81 @@
-#include <string>
-#include <functional>
-#include "SDL.h"
-#include "SDL_Opengl.h"
-
-#include "fontstash.h"
-
-using std::string;
-using std::function;
-
-int viewportWidth = -1, viewportHeight = -1;
-
-struct sth_stash* stash = 0;
-
-class Object {
-  public:
-    Object(function<void (Object&)> cls): fn(nullImpl) {
-      cls(*this);
-    }
-
-    Object(Object const&) = delete;
-    Object& operator=(Object const&) = delete;
-
-    template <typename S> function<S> getMethod(void* methodId) {
-      return *static_cast<function<S>*>(fn(methodId));
-    }
-
-    template <typename F> void addMethod(void* methodId, F method) {
-      function<void* (void*)> oldFn = fn;
-      fn = [=] (void* givenMethodId) -> void const* {
-        if (givenMethodId == methodId) {
-          return &method;
-        } else {
-          return oldFn(givenMethodId);
-        }
-      };
-    }
-
-  private:
-    static void* nullImpl(void const*) {
-      ((void (*)())nullptr)();
-      return nullptr;
-    }
-
-    function<void* (void const*)> fn;
+struct TouchHandler {
+  virtual ~TouchHandler() {}
+  virtual void handleTouch(int x, int y) = 0;
 };
 
-inline void addFont(int idx, string path) {
-  if (!sth_add_font(stash, idx, path.c_str()))
-  {
-    printf("Could not add font.\n");
-    exit(1);
-  }
-}
+struct Renderable {
+  virtual ~Renderable() {}
+  virtual void render() = 0;
+};
 
-inline void initializeFonts() {
-	stash = sth_create(512,512);
-	if (!stash)
-	{
-		printf("Could not create stash.\n");
-    exit(1);
-	}
+struct Widget : public TouchHandler, public Renderable {
+  virtual void render() = 0;
+  virtual void handleTouch(int x, int y) = 0;
+};
 
-  addFont(0, "data/DroidSerif-Regular.ttf");
-	addFont(1, "data/DroidSerif-Italic.ttf");
-  addFont(2, "data/DroidSerif-Bold.ttf");
-  addFont(3, "data/DroidSansJapanese.ttf");
-}
+struct _WidgetImpl : public Widget {
+  shared_ptr<Renderable> renderable;
+  shared_ptr<TouchHandler> touchHandler;
 
-namespace widgets {
-  int render;
-}
+  _WidgetImpl(shared_ptr<Renderable> renderable, shared_ptr<TouchHandler> touchHandler):
+    renderable(renderable), touchHandler(touchHandler) {}
 
-inline void app(Object& self) {
-  self.addMethod(&widgets::render, [&] () mutable {
-    float ascender;
-    sth_vmetrics(stash, 0, 24.0f, &ascender, nullptr, nullptr);
-    sth_draw_text(stash, 0, 24.0f, 0xFF0000FF, 10, viewportHeight - ascender, "Foo!", nullptr);
-  });
-}
-
-int done = 0;
-
-inline void initPlatform() {
-  if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
-  {
-    fprintf(stderr, "Couldn't initialize SDL: %s\n", SDL_GetError());
-    exit(1);
+  virtual void render() {
+    renderable->render();
   }
 
-  const SDL_VideoInfo* vi = SDL_GetVideoInfo();
-  viewportWidth = vi->current_w - 20;
-  viewportHeight = vi->current_h - 80;
-
-	SDL_WM_SetCaption("Curio", 0);
-}
-
-inline void shutdownPlatform() {
-	SDL_Quit();
-}
-
-inline void initGl() {
-  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-  SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-  SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
-  SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
-  SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-  SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-
-  SDL_Surface* screen = SDL_SetVideoMode(viewportWidth, viewportHeight, 0, SDL_OPENGL);
-  if (!screen)
-  {
-    printf("Could not initialise SDL opengl\n");
-    exit(1);
+  virtual void handleTouch(int x, int y) {
+    touchHandler->handleTouch(x, y);
   }
-}
+};
 
-inline void handlePendingEvents() {
-  SDL_Event event;
-  while (SDL_PollEvent(&event))
-  {
-    switch (event.type)
-    {
-      case SDL_MOUSEMOTION:
-        break;
-      case SDL_MOUSEBUTTONDOWN:
-        if (event.button.button) {
-          //handleClick(event.button.x, event.button.y, app);
-        }
-        break;
-      case SDL_KEYDOWN:
-        if (event.key.keysym.sym == SDLK_ESCAPE)
-          done = 1;
-        break;
-      case SDL_QUIT:
-        done = 1;
-        break;
-      default:
-        break;
+struct Void {};
+
+// TODO: Specialize Class for void type.
+// TODO: Special version for non-returning expressions?
+void nullRenderable(shared_ptr<Renderable>& self) {
+  struct _NullRenderable : public Renderable {
+    virtual void render() {
     }
-  }
+  };
+
+  self = make_shared<_NullRenderable>();
 }
 
-Object _app(app);
+void nullTouchHandler(shared_ptr<TouchHandler>& self, function<void (shared_ptr<TouchHandler>&, Void)>) {
+  struct _NullTouchHandler : public TouchHandler {
+    virtual void handleTouch(int x, int y) {
+    }
+  };
 
-inline void render() {
-  glViewport(0, 0, viewportWidth, viewportHeight);
-  glClearColor(0.3f, 0.3f, 0.32f, 1.0f);
-  glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDisable(GL_TEXTURE_2D);
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  glOrtho(0,viewportWidth,0,viewportHeight,-1,1);
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glDisable(GL_DEPTH_TEST);
-  glColor4ub(255,255,255,255);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-
-  sth_begin_draw(stash);
-  _app.getMethod<void ()>(&widgets::render)();
-
-  sth_end_draw(stash);
-
-  glEnable(GL_DEPTH_TEST);
-
-  SDL_GL_SwapBuffers();
+  self = make_shared<_NullRenderable>();
 }
 
-int main(int /*argc*/, char* /*argv*/[])
-{
-  initPlatform();
-  initGl();
+void waitForTouch(shared_ptr<TouchHandler>& self, function<void (shared_ptr<TouchHandler>&, Void)> cont) {
+  struct TouchHandlerImpl : public TouchHandler {
+    virtual void handleTouch(int x, int y) {
+      // ... Test if in area.
 
-  initializeFonts();
+      cont(self, Void());
+    }
+  };
 
-	while (!done)
-	{
-    handlePendingEvents();
-    render();
-	}
+  self = make_shared<TouchHandlerImpl>();
+}
 
-  shutdownPlatform();
+void quad(shared_ptr<TouchHandler>& self) {
+  struct RenderableImpl : public Renderable {
+    virtual void render() {
+      // ... Render quad
+    }
+  };
 
-	return 0;
+  self = make_shared<RenderableImpl>();
+}
+
+void button(shared_ptr<Widget>& self, function<void (shared_ptr<Widget>&, Void)> cont) {
+}
+
+int main() {
+  return 0;
 }
