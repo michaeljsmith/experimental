@@ -30,25 +30,6 @@ struct Widget : public TouchHandler, public Renderable {
 Widget::~Widget() {
 }
 
-struct WidgetImpl : public Widget {
-  shared_ptr<Renderable> _renderable;
-  shared_ptr<TouchHandler> _touchHandler;
-
-  WidgetImpl(shared_ptr<Renderable> renderable, shared_ptr<TouchHandler> touchHandler):
-    _renderable(renderable), _touchHandler(touchHandler) {}
-
-  virtual void render();
-  virtual void handleTouch(int x, int y);
-};
-
-void WidgetImpl::render() {
-  _renderable->render();
-}
-
-void WidgetImpl::handleTouch(int x, int y) {
-  _touchHandler->handleTouch(x, y);
-}
-
 struct Void {};
 
 // TODO: Specialize Class for void type.
@@ -71,26 +52,56 @@ inline void nullTouchHandler(shared_ptr<TouchHandler>& self, function<void (shar
   self = make_shared<NullTouchHandler>();
 }
 
-inline void waitForTouch(shared_ptr<TouchHandler>& self, function<void (shared_ptr<TouchHandler>&, Void)> cont) {
+inline function<void (shared_ptr<Widget>& self)> widget(
+    function<void (shared_ptr<Renderable>&)> renderable,
+    function<void (shared_ptr<TouchHandler>&)> touchHandler) {
+
+  struct WidgetImpl : public Widget {
+    shared_ptr<Renderable> _renderable;
+    shared_ptr<TouchHandler> _touchHandler;
+
+    virtual void render() {
+      _renderable->render();
+    }
+
+    virtual void handleTouch(int x, int y) {
+      _touchHandler->handleTouch(x, y);
+    }
+  };
+
+  return [=] (shared_ptr<Widget>& self) {
+    shared_ptr<Renderable> renderableInstance;
+    renderable(renderableInstance);
+
+    shared_ptr<TouchHandler> touchHandlerInstance;
+    touchHandler(touchHandlerInstance);
+
+    auto widget = make_shared<WidgetImpl>();
+    widget->_renderable = renderableInstance;
+    widget->_touchHandler = touchHandlerInstance;
+    self = widget;
+  };
+}
+
+inline function<void (shared_ptr<TouchHandler>& self)> onTouch(function<void ()> onClick) {
   struct TouchHandlerImpl : public TouchHandler {
-    shared_ptr<TouchHandler>& _self;
-    function<void (shared_ptr<TouchHandler>&, Void)> _cont;
+    function<void ()> _onClick;
 
     TouchHandlerImpl(
-        shared_ptr<TouchHandler>& self2,
-        function<void (shared_ptr<TouchHandler>&, Void)> const& cont2):
-      _self(self2),
-      _cont(cont2) {
+        function<void ()> const& onClick2):
+      _onClick(onClick2) {
     }
 
     virtual void handleTouch(int /*x*/, int /*y*/) {
       // ... Test if in area.
 
-      _cont(_self, Void());
+      _onClick();
     }
   };
 
-  self = make_shared<TouchHandlerImpl>(self, cont);
+  return [=] (shared_ptr<TouchHandler>& self) {
+    self = make_shared<TouchHandlerImpl>(onClick);
+  };
 }
 
 inline void quad(shared_ptr<Renderable>& self) {
@@ -103,7 +114,8 @@ inline void quad(shared_ptr<Renderable>& self) {
   self = make_shared<RenderableImpl>();
 }
 
-inline void button(shared_ptr<Widget>& /*self*/, function<void (shared_ptr<Widget>&, Void)> /*cont*/) {
+inline function<void (shared_ptr<Widget>& self)> button(function<void ()> onClick) {
+  return widget(quad, onTouch(onClick));
 }
 
 int main() {
