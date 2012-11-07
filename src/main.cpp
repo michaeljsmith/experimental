@@ -1,4 +1,4 @@
-#include <memory>
+;cc
 #include <functional>
 
 using std::shared_ptr;
@@ -32,8 +32,28 @@ Widget::~Widget() {
 
 struct Void {};
 
-// TODO: Specialize Class for void type.
-// TODO: Special version for non-returning expressions?
+using Action = function<void ()>;
+template <typename T> using Class = function<void (shared_ptr<T>& self)>;
+
+template <typename T> using ValueContinuation = function<void (T)>;
+template <typename T> using ValueExpression = function<void (ValueContinuation<T>)>;
+template <typename T> using ValueTarget = function<Action (ValueExpression<T>)>;
+
+inline ValueTarget<int> valueTarget(ValueContinuation<int> fn) {
+  return [&] (ValueExpression<int> expr) -> Action {
+    Action action = [&] () {
+      expr(fn);
+    };
+    return action;
+  };
+}
+
+template <typename T> ValueExpression<T> literal(T value) {
+  return [] (ValueContinuation<T> cont) {
+    cont(value);
+  };
+}
+
 inline void nullRenderable(shared_ptr<Renderable>& self) {
   struct _NullRenderable : public Renderable {
     virtual void render() {
@@ -43,7 +63,7 @@ inline void nullRenderable(shared_ptr<Renderable>& self) {
   self = make_shared<_NullRenderable>();
 }
 
-inline void nullTouchHandler(shared_ptr<TouchHandler>& self, function<void (shared_ptr<TouchHandler>&, Void)>) {
+inline void nullTouchHandler(shared_ptr<TouchHandler>& self) {
   struct NullTouchHandler : public TouchHandler {
     virtual void handleTouch(int /*x*/, int /*y*/) {
     }
@@ -52,9 +72,9 @@ inline void nullTouchHandler(shared_ptr<TouchHandler>& self, function<void (shar
   self = make_shared<NullTouchHandler>();
 }
 
-inline function<void (shared_ptr<Widget>& self)> widget(
-    function<void (shared_ptr<Renderable>&)> renderable,
-    function<void (shared_ptr<TouchHandler>&)> touchHandler) {
+inline Class<Widget> widget(
+    Class<Renderable> renderable,
+    Class<TouchHandler> touchHandler) {
 
   struct WidgetImpl : public Widget {
     shared_ptr<Renderable> _renderable;
@@ -83,12 +103,12 @@ inline function<void (shared_ptr<Widget>& self)> widget(
   };
 }
 
-inline function<void (shared_ptr<TouchHandler>& self)> onTouch(function<void ()> onClick) {
+inline Class<TouchHandler> onTouch(Action onClick) {
   struct TouchHandlerImpl : public TouchHandler {
-    function<void ()> _onClick;
+    Action _onClick;
 
     TouchHandlerImpl(
-        function<void ()> const& onClick2):
+        Action const& onClick2):
       _onClick(onClick2) {
     }
 
@@ -114,9 +134,31 @@ inline void quad(shared_ptr<Renderable>& self) {
   self = make_shared<RenderableImpl>();
 }
 
-inline function<void (shared_ptr<Widget>& self)> button(function<void ()> onClick) {
+inline Class<Widget> button(Action onClick) {
   return widget(quad, onTouch(onClick));
 }
+
+// TODO: break this down.
+inline Class<Widget> interrupt(
+    function<Class<Widget> (ValueTarget<int> escape)> body,
+    function<Class<Widget> (int)> cont) {
+
+  body(valueTarget([=] (int value) {
+    auto nextClass = cont(value);
+    nextClass(self);
+  }));
+
+  //return [=] (shared_ptr<Widget>& self) {
+  //  body(valueTarget([=, &self] (int value) {
+  //    auto nextClass = cont(value);
+  //    nextClass(self);
+  //  }));
+  //};
+}
+
+//auto foo = interrupt([] (ValueTarget<int> finish) {
+//  button(finish(literal(3)));
+//  });
 
 int main() {
   return 0;
