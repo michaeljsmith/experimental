@@ -142,15 +142,15 @@ inline Class<Widget> button(Action onClick) {
   return widget(quad, onTouch(onClick));
 }
 
-inline Program<Widget, int> interrupt(
+inline Program<Widget, int> yield(
     function<Class<Widget> (ValueTarget<int> escape)> body) {
 
   return [=] (function<Class<Widget> (int)> cont) -> Class<Widget> {
     return [=] (shared_ptr<Widget>& self) {
       auto target = valueTarget([=, &self] (int value) {
-          auto nextClass = cont(value);
-          nextClass(self);
-          });
+        auto nextClass = cont(value);
+        nextClass(self);
+      });
 
       auto cls = body(target);
       cls(self);
@@ -158,21 +158,40 @@ inline Program<Widget, int> interrupt(
   };
 }
 
-inline Class<Widget> run(Program<Widget, int> program) {
-  return program([] (int) -> Class<Widget> {
-    return [] (shared_ptr<Widget>& /*self*/) -> void {
-      ((void(*)())0)();
+// Program = function<Class<T> (function<Class<T> (V)>)>;
+
+inline Program<Widget, int> interrupt(
+    function<Program<Widget, int> (ValueTarget<int> escape)> body) {
+
+  return [=] (function<Class<Widget> (int)> cont) -> Class<Widget> {
+    return [=] (shared_ptr<Widget>& self) {
+      auto target = valueTarget([=, &self] (int value) {
+        auto nextClass = cont(value);
+        nextClass(self);
+      });
+
+      auto program = body(target);
+      auto cls = program(cont);
+      cls(self);
+    };
+  };
+}
+
+inline Class<Widget> runApp(Program<Widget, int> program) {
+  return program([] (int value) -> Class<Widget> {
+    return [=] (shared_ptr<Widget>& /*self*/) -> void {
+      exit(value);
     };
   });
 }
 
-auto foo = run(interrupt([] (ValueTarget<int> finish) -> Class<Widget> {
+auto app = yield([] (ValueTarget<int> finish) -> Class<Widget> {
   return button(finish(literal(3)));
-  }));
+  });
 
 int main() {
   shared_ptr<Widget> widget;
-  foo(widget);
+  runApp(app)(widget);
 
   widget->render();
   widget->render();
