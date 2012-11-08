@@ -1,4 +1,4 @@
-;cc
+#include <memory>
 #include <functional>
 
 using std::shared_ptr;
@@ -34,6 +34,7 @@ struct Void {};
 
 using Action = function<void ()>;
 template <typename T> using Class = function<void (shared_ptr<T>& self)>;
+template <typename T, typename V> using Program = function<Class<T> (function<Class<T> (V)>)>;
 
 template <typename T> using ValueContinuation = function<void (T)>;
 template <typename T> using ValueExpression = function<void (ValueContinuation<T>)>;
@@ -49,7 +50,7 @@ inline ValueTarget<int> valueTarget(ValueContinuation<int> fn) {
 }
 
 template <typename T> ValueExpression<T> literal(T value) {
-  return [] (ValueContinuation<T> cont) {
+  return [=] (ValueContinuation<T> cont) {
     cont(value);
   };
 }
@@ -138,27 +139,25 @@ inline Class<Widget> button(Action onClick) {
   return widget(quad, onTouch(onClick));
 }
 
-// TODO: break this down.
-inline Class<Widget> interrupt(
-    function<Class<Widget> (ValueTarget<int> escape)> body,
-    function<Class<Widget> (int)> cont) {
+inline Program<Widget, int> interrupt(
+    function<Class<Widget> (ValueTarget<int> escape)> body) {
 
-  body(valueTarget([=] (int value) {
-    auto nextClass = cont(value);
-    nextClass(self);
-  }));
+  return [=] (function<Class<Widget> (int)> cont) -> Class<Widget> {
+    return [=] (shared_ptr<Widget>& self) {
+      auto target = valueTarget([=, &self] (int value) {
+          auto nextClass = cont(value);
+          nextClass(self);
+          });
 
-  //return [=] (shared_ptr<Widget>& self) {
-  //  body(valueTarget([=, &self] (int value) {
-  //    auto nextClass = cont(value);
-  //    nextClass(self);
-  //  }));
-  //};
+      auto class_ = body(target);
+      class_(self);
+    };
+  };
 }
 
-//auto foo = interrupt([] (ValueTarget<int> finish) {
-//  button(finish(literal(3)));
-//  });
+auto foo = interrupt([] (ValueTarget<int> finish) -> Class<Widget> {
+  return button(finish(literal(3)));
+  });
 
 int main() {
   return 0;
