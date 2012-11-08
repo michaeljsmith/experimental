@@ -1,9 +1,11 @@
 #include <memory>
 #include <functional>
+#include <iostream>
 
 using std::shared_ptr;
 using std::make_shared;
 using std::function;
+using std::cout;
 
 struct TouchHandler {
   virtual ~TouchHandler();
@@ -41,8 +43,8 @@ template <typename T> using ValueExpression = function<void (ValueContinuation<T
 template <typename T> using ValueTarget = function<Action (ValueExpression<T>)>;
 
 inline ValueTarget<int> valueTarget(ValueContinuation<int> fn) {
-  return [&] (ValueExpression<int> expr) -> Action {
-    Action action = [&] () {
+  return [=] (ValueExpression<int> expr) -> Action {
+    Action action = [=] () {
       expr(fn);
     };
     return action;
@@ -129,6 +131,7 @@ inline void quad(shared_ptr<Renderable>& self) {
   struct RenderableImpl : public Renderable {
     virtual void render() {
       // ... Render quad
+      cout << "Rendering quad\n";
     }
   };
 
@@ -149,16 +152,31 @@ inline Program<Widget, int> interrupt(
           nextClass(self);
           });
 
-      auto class_ = body(target);
-      class_(self);
+      auto cls = body(target);
+      cls(self);
     };
   };
 }
 
-auto foo = interrupt([] (ValueTarget<int> finish) -> Class<Widget> {
-  return button(finish(literal(3)));
+inline Class<Widget> run(Program<Widget, int> program) {
+  return program([] (int) -> Class<Widget> {
+    return [] (shared_ptr<Widget>& /*self*/) -> void {
+      ((void(*)())0)();
+    };
   });
+}
+
+auto foo = run(interrupt([] (ValueTarget<int> finish) -> Class<Widget> {
+  return button(finish(literal(3)));
+  }));
 
 int main() {
+  shared_ptr<Widget> widget;
+  foo(widget);
+
+  widget->render();
+  widget->render();
+  widget->handleTouch(0, 0);
+
   return 0;
 }
