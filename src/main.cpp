@@ -12,6 +12,25 @@ struct TouchHandler {
   virtual void handleTouch(int x, int y) = 0;
 };
 
+
+inline shared_ptr<TouchHandler> wrapper(shared_ptr<TouchHandler> base, function<void (function<void (shared_ptr<TouchHandler>)>)> fn) {
+  struct TouchHandlerWrapper : public TouchHandler {
+    shared_ptr<TouchHandler> _base;
+    function<void (function<void (shared_ptr<TouchHandler>)>)> _fn;
+
+    TouchHandlerWrapper(
+        shared_ptr<TouchHandler> base2,
+        function<void (function<void (shared_ptr<TouchHandler>)>)> fn2):
+      _base(base2), _fn(fn2) {
+    }
+
+    virtual void handleTouch(int x, int y) {
+      _fn(std::bind(&TouchHandler::handleTouch, std::placeholders::_1, x, y));
+    }
+  };
+
+  return make_shared<TouchHandlerWrapper>(base, fn);
+}
 TouchHandler::~TouchHandler() {
 }
 
