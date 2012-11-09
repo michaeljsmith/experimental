@@ -53,6 +53,16 @@ struct Renderable {
 Renderable::~Renderable() {
 }
 
+inline shared_ptr<Renderable> wrapper(shared_ptr<Renderable> base, function<void (function<void (shared_ptr<Renderable>)>)> fn) {
+  struct RenderableWrapper : public Wrapper<Renderable> {
+    virtual void render() {
+      _fn(std::bind(&TouchHandler::handleTouch, std::placeholders::_1));
+    }
+  };
+
+  return makeWrapper<TouchHandlerWrapper>(base, fn);
+}
+
 struct Widget : public TouchHandler, public Renderable {
   virtual ~Widget();
 };
