@@ -12,25 +12,36 @@ struct TouchHandler {
   virtual void handleTouch(int x, int y) = 0;
 };
 
+template <typename T> struct Wrapper : public T {
+  shared_ptr<TouchHandler> _base;
+  function<void (function<void (shared_ptr<TouchHandler>)>)> _fn;
+
+  void initialize(
+      shared_ptr<T> base,
+      function<void (function<void (shared_ptr<T>)>)> fn) {
+    _base = base;
+    _fn = fn;
+  }
+};
+
+template <typename T> shared_ptr<T> makeWrapper(
+    shared_ptr<TouchHandler> base,
+    function<void (function<void (shared_ptr<TouchHandler>)>)> fn) {
+  auto wrapper = make_shared<T>();
+  wrapper->initialize(base, fn);
+  return wrapper;
+}
 
 inline shared_ptr<TouchHandler> wrapper(shared_ptr<TouchHandler> base, function<void (function<void (shared_ptr<TouchHandler>)>)> fn) {
-  struct TouchHandlerWrapper : public TouchHandler {
-    shared_ptr<TouchHandler> _base;
-    function<void (function<void (shared_ptr<TouchHandler>)>)> _fn;
-
-    TouchHandlerWrapper(
-        shared_ptr<TouchHandler> base2,
-        function<void (function<void (shared_ptr<TouchHandler>)>)> fn2):
-      _base(base2), _fn(fn2) {
-    }
-
+  struct TouchHandlerWrapper : public Wrapper<TouchHandler> {
     virtual void handleTouch(int x, int y) {
       _fn(std::bind(&TouchHandler::handleTouch, std::placeholders::_1, x, y));
     }
   };
 
-  return make_shared<TouchHandlerWrapper>(base, fn);
+  return makeWrapper<TouchHandlerWrapper>(base, fn);
 }
+
 TouchHandler::~TouchHandler() {
 }
 
@@ -44,8 +55,6 @@ Renderable::~Renderable() {
 
 struct Widget : public TouchHandler, public Renderable {
   virtual ~Widget();
-  virtual void render() = 0;
-  virtual void handleTouch(int x, int y) = 0;
 };
 
 Widget::~Widget() {
