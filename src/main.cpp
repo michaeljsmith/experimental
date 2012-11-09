@@ -68,6 +68,9 @@ template <> struct Wrapper<Widget> : public Widget, public Wrapper<TouchHandler>
   Wrapper(function<void (function<void (shared_ptr<Widget>)>)> fn):
     Wrapper<TouchHandler>(fn), Wrapper<Renderable>(fn) {
   }
+
+  virtual void handleTouch(int x, int y) {Wrapper<TouchHandler>::handleTouch(x, y);};
+  virtual void render() {Wrapper<Renderable>::render();}
 };
 
 Wrapper<Widget>::~Wrapper() {
@@ -226,8 +229,26 @@ inline Class<Widget> runApp(Program<Widget, int> program) {
   });
 }
 
+inline Class<Widget> layout(Class<Widget> c0, Class<Widget> c1) {
+  return [=] (shared_ptr<Widget>& self) {
+    shared_ptr<Widget> x0;
+    c0(x0);
+
+    shared_ptr<Widget> x1;
+    c1(x1);
+
+    auto widget = wrapper<Widget>([=] (function<void (shared_ptr<Widget>)> message) {
+      message(x0);
+      message(x1);
+    });
+    self = widget;
+  };
+}
+
 auto app = yield([] (ValueTarget<int> finish) -> Class<Widget> {
-  return button(finish(literal(3)));
+  return layout(
+    button(finish(literal(5))),
+    button(finish(literal(3))));
   });
 
 int main() {
