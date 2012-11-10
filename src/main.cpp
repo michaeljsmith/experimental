@@ -52,7 +52,7 @@ inline bool pointInSpaceBounds(Point point, SpaceBounds bounds) {
 struct Layout {
   virtual ~Layout();
 
-  virtual SpaceSize getSize() = 0;
+  virtual SpaceSize getSize() {return SpaceSize();}
 };
 
 Layout::~Layout() {
@@ -107,15 +107,7 @@ struct Widget : Layout, TouchHandler, Renderable {
 Widget::~Widget() {
 }
 
-struct NullLayoutWidget : Widget {
-  virtual SpaceSize getSize();
-};
-
-SpaceSize NullLayoutWidget::getSize() {
-  return SpaceSize();
-}
-
-template <> struct Wrapper<Widget> : NullLayoutWidget, Wrapper<Layout>, Wrapper<TouchHandler>, Wrapper<Renderable> {
+template <> struct Wrapper<Widget> : Widget, Wrapper<TouchHandler>, Wrapper<Renderable> {
   virtual ~Wrapper();
 
   Wrapper(function<void (function<void (shared_ptr<Widget>)>)> fn):
@@ -176,7 +168,7 @@ inline Class<Widget> widget(
     Class<Renderable> renderable,
     Class<TouchHandler> touchHandler) {
 
-  struct WidgetImpl : NullLayoutWidget {
+  struct WidgetImpl : Widget {
     shared_ptr<Renderable> _renderable;
     shared_ptr<TouchHandler> _touchHandler;
 
@@ -224,6 +216,34 @@ inline Class<TouchHandler> onTouch(Action onClick) {
   };
 }
 
+inline Class<Widget> withTouchHandler(Class<TouchHandler> touchHandler, Class<Widget> base) {
+  return [=] (shared_ptr<Widget>& self) {
+    shared_ptr<Widget> _base;
+    base(_base);
+
+    shared_ptr<TouchHandler> _touchHandler;
+    touchHandler(_touchHandler);
+
+    auto fn = [=] (function<void (shared_ptr<Widget>)> message) {
+      message(_base);
+    };
+
+    struct WithTouchHandler : Wrapper<Widget> {
+      function<SpaceSize ()> _sizeFn;
+
+      WithSizeWrapper(function<SpaceSize ()> sizeFn2, function<void (function<void (shared_ptr<Widget>)>)> fn2):
+        Wrapper<Widget>(fn2), _sizeFn(sizeFn2) {
+      }
+
+      virtual SpaceSize getSize() {
+        return _sizeFn();
+      }
+    };
+
+    self = make_shared<WithSizeWrapper>(sizeFn, fn);
+  };
+}
+
 inline void quad(shared_ptr<Renderable>& self) {
   struct RenderableImpl : Renderable {
     virtual void render() {
@@ -234,6 +254,11 @@ inline void quad(shared_ptr<Renderable>& self) {
 
   self = make_shared<RenderableImpl>();
 }
+
+//inline Class<Widget> label(string text) {
+//  return [=] (shared_ptr<Widget>& self) {
+//  }
+//}
 
 inline Class<Widget> withSizeFn(function<SpaceSize ()> sizeFn, Class<Widget> base) {
   return [=] (shared_ptr<Widget>& self) {
