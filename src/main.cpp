@@ -235,7 +235,7 @@ inline void quad(shared_ptr<Renderable>& self) {
   self = make_shared<RenderableImpl>();
 }
 
-inline Class<Widget> withSize(SpaceSize size, Class<Widget> base) {
+inline Class<Widget> withSizeFn(function<SpaceSize ()> sizeFn, Class<Widget> base) {
   return [=] (shared_ptr<Widget>& self) {
     shared_ptr<Widget> _base;
     base(_base);
@@ -245,19 +245,25 @@ inline Class<Widget> withSize(SpaceSize size, Class<Widget> base) {
     };
 
     struct WithSizeWrapper : Wrapper<Widget> {
-      SpaceSize _size;
+      function<SpaceSize ()> _sizeFn;
 
-      WithSizeWrapper(SpaceSize size2, function<void (function<void (shared_ptr<Widget>)>)> fn2):
-        Wrapper<Widget>(fn2), _size(size2) {
+      WithSizeWrapper(function<SpaceSize ()> sizeFn2, function<void (function<void (shared_ptr<Widget>)>)> fn2):
+        Wrapper<Widget>(fn2), _sizeFn(sizeFn2) {
       }
 
       virtual SpaceSize getSize() {
-        return _size;
+        return _sizeFn();
       }
     };
 
-    self = make_shared<WithSizeWrapper>(size, fn);
+    self = make_shared<WithSizeWrapper>(sizeFn, fn);
   };
+}
+
+inline Class<Widget> withSize(SpaceSize size, Class<Widget> base) {
+  return withSizeFn([=] () {
+      return size;
+    }, base);
 }
 
 inline Class<Widget> button(Action onClick) {
