@@ -229,17 +229,22 @@ inline Class<Widget> runApp(Program<Widget, int> program) {
   });
 }
 
-inline Class<Widget> layout(Class<Widget> c0, Class<Widget> c1) {
-  return [=] (shared_ptr<Widget>& self) {
-    shared_ptr<Widget> x0;
-    c0(x0);
+inline Class<Widget> layout(Class<Widget> c0) {
+  return c0;
+}
 
-    shared_ptr<Widget> x1;
-    c1(x1);
+template<typename... Parameters>
+inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
+  return [=] (shared_ptr<Widget>& self) {
+    shared_ptr<Widget> _head;
+    head(_head);
+
+    shared_ptr<Widget> _tail;
+    layout(tail...)(_tail);
 
     auto widget = wrapper<Widget>([=] (function<void (shared_ptr<Widget>)> message) {
-      message(x0);
-      message(x1);
+      message(_head);
+      message(_tail);
     });
     self = widget;
   };
@@ -255,7 +260,6 @@ int main() {
   shared_ptr<Widget> widget;
   runApp(app)(widget);
 
-  widget->render();
   widget->render();
   widget->handleTouch(0, 0);
 
