@@ -15,22 +15,56 @@ template <typename T> inline shared_ptr<T> wrapper(function<void (function<void 
   return make_shared<Wrapper<T>>(fn);
 }
 
-struct Bounds {
-  array<array<int, 2>, 2> bounds {{{{0, 0}}, {{0, 0}}}};
+using Bounds = array<int, 2>;
+
+using SpaceBounds = array<Bounds, 2>;
+namespace parameters {
+  SpaceBounds bounds;
+}
+
+using Size = int;
+using SpaceSize = array<Size, 2>;
+
+using Position = int;
+using Point = array<Position, 2>;
+
+inline Bounds boundsConstrainedToSize(Bounds oldBounds, int size) {
+  auto upper = oldBounds[0] + std::min(oldBounds[1] - oldBounds[0], size);
+  return {{oldBounds[0], upper}};
+}
+
+inline Bounds boundsFromPositionAndSize(int position, int size) {
+  return {{position, position + size}};
+}
+
+inline bool positionInBounds(int position, Bounds bounds) {
+  return position >= bounds[0] && position <= bounds[1];
+}
+
+inline bool pointInSpaceBounds(Point point, SpaceBounds bounds) {
+  bool inBounds = true;
+  for (size_t i = 0; i < 2; ++i) {
+    inBounds = inBounds && positionInBounds(point[i], bounds[i]);
+  }
+  return inBounds;
+}
+
+struct Layout {
+  virtual ~Layout();
+
+  virtual Size getSize() = 0;
 };
 
-Bounds bounds;
-
-struct Size {
-  array<int, 2> sizes {{0, 0}};
-};
-
-Size size;
+Layout::~Layout() {
+}
 
 struct TouchHandler {
   virtual ~TouchHandler();
   virtual void handleTouch(int x, int y) = 0;
 };
+
+TouchHandler::~TouchHandler() {
+}
 
 template <> struct Wrapper<TouchHandler> : TouchHandler {
   function<void (function<void (shared_ptr<TouchHandler>)>)> _fn;
@@ -45,13 +79,13 @@ void Wrapper<TouchHandler>::handleTouch(int x, int y) {
   _fn(std::bind(&TouchHandler::handleTouch, std::placeholders::_1, x, y));
 }
 
-TouchHandler::~TouchHandler() {
-}
-
 struct Renderable {
   virtual ~Renderable();
   virtual void render() = 0;
 };
+
+Renderable::~Renderable() {
+}
 
 template <> struct Wrapper<Renderable> : Renderable {
   function<void (function<void (shared_ptr<Renderable>)>)> _fn;
@@ -66,17 +100,22 @@ void Wrapper<Renderable>::render() {
   _fn(std::bind(&Renderable::render, std::placeholders::_1));
 }
 
-Renderable::~Renderable() {
-}
-
-struct Widget : TouchHandler, Renderable {
+struct Widget : Layout, TouchHandler, Renderable {
   virtual ~Widget();
 };
 
 Widget::~Widget() {
 }
 
-template <> struct Wrapper<Widget> : Widget, Wrapper<TouchHandler>, Wrapper<Renderable> {
+struct NullLayoutWidget : Widget {
+  virtual Size getSize();
+};
+
+Size NullLayoutWidget::getSize() {
+  return Size();
+}
+
+template <> struct Wrapper<Widget> : NullLayoutWidget, Wrapper<Layout>, Wrapper<TouchHandler>, Wrapper<Renderable> {
   virtual ~Wrapper();
 
   Wrapper(function<void (function<void (shared_ptr<Widget>)>)> fn):
@@ -137,7 +176,7 @@ inline Class<Widget> widget(
     Class<Renderable> renderable,
     Class<TouchHandler> touchHandler) {
 
-  struct WidgetImpl : Widget {
+  struct WidgetImpl : NullLayoutWidget {
     shared_ptr<Renderable> _renderable;
     shared_ptr<TouchHandler> _touchHandler;
 
@@ -173,10 +212,10 @@ inline Class<TouchHandler> onTouch(Action onClick) {
       _onClick(onClick2) {
     }
 
-    virtual void handleTouch(int /*x*/, int /*y*/) {
-      // ... Test if in area.
-
-      _onClick();
+    virtual void handleTouch(int x, int y) {
+      if (pointInSpaceBounds({{x, y}}, parameters::bounds)) {
+        _onClick();
+      }
     }
   };
 
@@ -251,15 +290,28 @@ template <typename... Parameters>
 inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
   return [=] (shared_ptr<Widget>& self) {
     Class<Widget> classes[] {head, layout(tail...)};
-    shared_ptr<Widget> items[2];
-    for (int i = 0; i < 2; ++i) {
+    array<shared_ptr<Widget>, 2> items;
+    for (size_t i = 0; i < 2; ++i) {
       classes[i](items[i]);
     }
 
     auto widget = wrapper<Widget>([=] (function<void (shared_ptr<Widget>)> message) {
-      for (int i = 0; i < 2; ++i) {
+      // TODO: Cache.
+      array<Size, 2> sizes;
+      std::transform(items.begin(), items.end(), sizes.begin(), std::bind(&Layout::getSize, std::placeholders::_1));
+
+      SpaceBounds parentBounds = parameters::bounds;
+
+      int currentPosition = 0;
+      for (size_t i = 0; i < 2; ++i) {
+        parameters::bounds[0] = boundsConstrainedToSize(parentBounds[0], sizes[i]);
+        parameters::bounds[1] = boundsFromPositionAndSize(currentPosition, sizes[i]);
+        currentPosition += sizes[i];
+
         message(items[i]);
       }
+
+      parameters::bounds = parentBounds;
     });
     self = widget;
   };
@@ -275,7 +327,7 @@ int main() {
   runApp(app)(widget);
 
   widget->render();
-  widget->handleTouch(0, 0);
+  widget->handleTouch(10, 10);
 
   return 0;
 }
