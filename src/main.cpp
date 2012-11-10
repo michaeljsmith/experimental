@@ -32,7 +32,7 @@ struct TouchHandler {
   virtual void handleTouch(int x, int y) = 0;
 };
 
-template <> struct Wrapper<TouchHandler> : public TouchHandler {
+template <> struct Wrapper<TouchHandler> : TouchHandler {
   function<void (function<void (shared_ptr<TouchHandler>)>)> _fn;
 
   Wrapper(function<void (function<void (shared_ptr<TouchHandler>)>)> fn): _fn(fn) {
@@ -53,7 +53,7 @@ struct Renderable {
   virtual void render() = 0;
 };
 
-template <> struct Wrapper<Renderable> : public Renderable {
+template <> struct Wrapper<Renderable> : Renderable {
   function<void (function<void (shared_ptr<Renderable>)>)> _fn;
 
   Wrapper(function<void (function<void (shared_ptr<Renderable>)>)> fn): _fn(fn) {
@@ -69,14 +69,14 @@ void Wrapper<Renderable>::render() {
 Renderable::~Renderable() {
 }
 
-struct Widget : public TouchHandler, public Renderable {
+struct Widget : TouchHandler, Renderable {
   virtual ~Widget();
 };
 
 Widget::~Widget() {
 }
 
-template <> struct Wrapper<Widget> : public Widget, public Wrapper<TouchHandler>, public Wrapper<Renderable> {
+template <> struct Wrapper<Widget> : Widget, Wrapper<TouchHandler>, Wrapper<Renderable> {
   virtual ~Wrapper();
 
   Wrapper(function<void (function<void (shared_ptr<Widget>)>)> fn):
@@ -116,7 +116,7 @@ template <typename T> ValueExpression<T> literal(T value) {
 }
 
 inline void nullRenderable(shared_ptr<Renderable>& self) {
-  struct _NullRenderable : public Renderable {
+  struct _NullRenderable : Renderable {
     virtual void render() {
     }
   };
@@ -125,7 +125,7 @@ inline void nullRenderable(shared_ptr<Renderable>& self) {
 }
 
 inline void nullTouchHandler(shared_ptr<TouchHandler>& self) {
-  struct NullTouchHandler : public TouchHandler {
+  struct NullTouchHandler : TouchHandler {
     virtual void handleTouch(int /*x*/, int /*y*/) {
     }
   };
@@ -137,7 +137,7 @@ inline Class<Widget> widget(
     Class<Renderable> renderable,
     Class<TouchHandler> touchHandler) {
 
-  struct WidgetImpl : public Widget {
+  struct WidgetImpl : Widget {
     shared_ptr<Renderable> _renderable;
     shared_ptr<TouchHandler> _touchHandler;
 
@@ -165,7 +165,7 @@ inline Class<Widget> widget(
 }
 
 inline Class<TouchHandler> onTouch(Action onClick) {
-  struct TouchHandlerImpl : public TouchHandler {
+  struct TouchHandlerImpl : TouchHandler {
     Action _onClick;
 
     TouchHandlerImpl(
@@ -186,7 +186,7 @@ inline Class<TouchHandler> onTouch(Action onClick) {
 }
 
 inline void quad(shared_ptr<Renderable>& self) {
-  struct RenderableImpl : public Renderable {
+  struct RenderableImpl : Renderable {
     virtual void render() {
       // ... Render quad
       cout << "Rendering quad\n";
