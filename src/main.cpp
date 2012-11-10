@@ -52,7 +52,7 @@ inline bool pointInSpaceBounds(Point point, SpaceBounds bounds) {
 struct Layout {
   virtual ~Layout();
 
-  virtual Size getSize() = 0;
+  virtual SpaceSize getSize() = 0;
 };
 
 Layout::~Layout() {
@@ -108,11 +108,11 @@ Widget::~Widget() {
 }
 
 struct NullLayoutWidget : Widget {
-  virtual Size getSize();
+  virtual SpaceSize getSize();
 };
 
-Size NullLayoutWidget::getSize() {
-  return Size();
+SpaceSize NullLayoutWidget::getSize() {
+  return SpaceSize();
 }
 
 template <> struct Wrapper<Widget> : NullLayoutWidget, Wrapper<Layout>, Wrapper<TouchHandler>, Wrapper<Renderable> {
@@ -235,8 +235,34 @@ inline void quad(shared_ptr<Renderable>& self) {
   self = make_shared<RenderableImpl>();
 }
 
+inline Class<Widget> withSize(SpaceSize size, Class<Widget> base) {
+  return [=] (shared_ptr<Widget>& self) {
+    shared_ptr<Widget> _base;
+    base(_base);
+
+    auto fn = [=] (function<void (shared_ptr<Widget>)> message) {
+      message(_base);
+    };
+
+    struct WithSizeWrapper : Wrapper<Widget> {
+      SpaceSize _size;
+
+      WithSizeWrapper(SpaceSize size2, function<void (function<void (shared_ptr<Widget>)>)> fn2):
+        Wrapper<Widget>(fn2), _size(size2) {
+      }
+
+      virtual SpaceSize getSize() {
+        return _size;
+      }
+    };
+
+    self = make_shared<WithSizeWrapper>(size, fn);
+  };
+}
+
 inline Class<Widget> button(Action onClick) {
-  return widget(quad, onTouch(onClick));
+  return withSize({{20, 20}},
+      widget(quad, onTouch(onClick)));
 }
 
 inline Program<Widget, int> yield(
@@ -254,8 +280,6 @@ inline Program<Widget, int> yield(
     };
   };
 }
-
-// Program = function<Class<T> (function<Class<T> (V)>)>;
 
 inline Program<Widget, int> interrupt(
     function<Program<Widget, int> (ValueTarget<int> escape)> body) {
@@ -297,16 +321,16 @@ inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
 
     auto widget = wrapper<Widget>([=] (function<void (shared_ptr<Widget>)> message) {
       // TODO: Cache.
-      array<Size, 2> sizes;
+      array<SpaceSize, 2> sizes;
       std::transform(items.begin(), items.end(), sizes.begin(), std::bind(&Layout::getSize, std::placeholders::_1));
 
       SpaceBounds parentBounds = parameters::bounds;
 
       int currentPosition = 0;
       for (size_t i = 0; i < 2; ++i) {
-        parameters::bounds[0] = boundsConstrainedToSize(parentBounds[0], sizes[i]);
-        parameters::bounds[1] = boundsFromPositionAndSize(currentPosition, sizes[i]);
-        currentPosition += sizes[i];
+        parameters::bounds[0] = boundsConstrainedToSize(parentBounds[0], sizes[i][0]);
+        parameters::bounds[1] = boundsFromPositionAndSize(currentPosition, sizes[i][1]);
+        currentPosition += sizes[i][1];
 
         message(items[i]);
       }
@@ -326,6 +350,7 @@ int main() {
   shared_ptr<Widget> widget;
   runApp(app)(widget);
 
+  parameters::bounds = {{{{0, 100}}, {{0, 100}}}};
   widget->render();
   widget->handleTouch(10, 10);
 
