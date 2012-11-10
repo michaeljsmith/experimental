@@ -1,17 +1,31 @@
 #include <memory>
 #include <functional>
 #include <iostream>
+#include <array>
 
 using std::shared_ptr;
 using std::make_shared;
 using std::function;
 using std::cout;
+using std::array;
 
 template <typename T> struct Wrapper {};
 
 template <typename T> inline shared_ptr<T> wrapper(function<void (function<void (shared_ptr<T>)>)> fn) {
   return make_shared<Wrapper<T>>(fn);
 }
+
+struct Bounds {
+  array<array<int, 2>, 2> bounds {{{{0, 0}}, {{0, 0}}}};
+};
+
+Bounds bounds;
+
+struct Size {
+  array<int, 2> sizes {{0, 0}};
+};
+
+Size size;
 
 struct TouchHandler {
   virtual ~TouchHandler();
@@ -229,32 +243,32 @@ inline Class<Widget> runApp(Program<Widget, int> program) {
   });
 }
 
-inline Class<Widget> layout(Class<Widget> c0) {
-  return c0;
+inline Class<Widget> layout(Class<Widget> cls) {
+  return cls;
 }
 
-template<typename... Parameters>
+template <typename... Parameters>
 inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
   return [=] (shared_ptr<Widget>& self) {
-    shared_ptr<Widget> _head;
-    head(_head);
-
-    shared_ptr<Widget> _tail;
-    layout(tail...)(_tail);
+    Class<Widget> classes[] {head, layout(tail...)};
+    shared_ptr<Widget> items[2];
+    for (int i = 0; i < 2; ++i) {
+      classes[i](items[i]);
+    }
 
     auto widget = wrapper<Widget>([=] (function<void (shared_ptr<Widget>)> message) {
-      message(_head);
-      message(_tail);
+      for (int i = 0; i < 2; ++i) {
+        message(items[i]);
+      }
     });
     self = widget;
   };
 }
 
-auto app = yield([] (ValueTarget<int> finish) -> Class<Widget> {
+auto app = yield([] (ValueTarget<int> finish) {
   return layout(
     button(finish(literal(5))),
-    button(finish(literal(3))));
-  });
+    button(finish(literal(3))));});
 
 int main() {
   shared_ptr<Widget> widget;
