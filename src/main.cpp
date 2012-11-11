@@ -5,8 +5,6 @@
 #include <string>
 #include <numeric>
 
-using std::shared_ptr;
-using std::make_shared;
 using std::function;
 using std::cout;
 using std::array;
@@ -48,7 +46,7 @@ inline bool pointInSpaceBounds(Point point, SpaceBounds bounds) {
 }
 
 template <typename T> T makeUniform(
-    function<void (function<void (shared_ptr<T>)>)> fn) {
+    function<void (function<void (T)>)> fn) {
   return makeUniformDispatch(static_cast<T*>(nullptr), fn);
 }
 
@@ -60,7 +58,7 @@ struct Layout {
 };
 
 inline Layout makeUniformDispatch(Layout*,
-    function<void (function<void (shared_ptr<Layout>)>)> /*fn*/) {
+    function<void (function<void (Layout)>)> /*fn*/) {
   return Layout();
 }
 
@@ -72,7 +70,7 @@ struct TouchHandler {
 };
 
 inline TouchHandler makeUniformDispatch(TouchHandler*,
-    function<void (function<void (shared_ptr<TouchHandler>)>)> fn) {
+    function<void (function<void (TouchHandler)>)> fn) {
   return TouchHandler([=] (int x, int y) {
     fn(bind(&TouchHandler::handleTouch, std::placeholders::_1, x, y));
   });
@@ -86,9 +84,9 @@ struct Renderable {
 };
 
 inline Renderable makeUniformDispatch(Renderable*,
-    function<void (function<void (shared_ptr<Renderable>)>)> fn) {
+    function<void (function<void (Renderable)>)> fn) {
   return Renderable([=] () {
-    fn([=] (shared_ptr<Renderable> renderable) {renderable->render();});
+    fn([=] (Renderable renderable) {renderable.render();});
   });
 }
 
@@ -103,7 +101,7 @@ struct Widget : Layout, TouchHandler, Renderable {
 struct Void {};
 
 inline Widget makeUniformDispatch(Widget*,
-    function<void (function<void (shared_ptr<Widget>)>)> fn) {
+    function<void (function<void (Widget)>)> fn) {
   return Widget(
       makeUniform<Layout>(fn),
       makeUniform<TouchHandler>(fn),
@@ -111,7 +109,7 @@ inline Widget makeUniformDispatch(Widget*,
 }
 
 using Action = function<void ()>;
-template <typename T> using Class = function<void (shared_ptr<T>& self)>;
+template <typename T> using Class = function<void (T& self)>;
 template <typename T, typename V> using Program = function<Class<T> (function<Class<T> (V)>)>;
 
 template <typename T> using ValueContinuation = function<void (T)>;
@@ -134,8 +132,8 @@ template <typename T> ValueExpression<T> literal(T value) {
 }
 
 inline Class<TouchHandler> onTouch(Action onClick) {
-  return [=] (shared_ptr<TouchHandler>& self) {
-    self = make_shared<TouchHandler>([=] (int x, int y) {
+  return [=] (TouchHandler& self) {
+    self = TouchHandler([=] (int x, int y) {
       if (pointInSpaceBounds({{x, y}}, parameters::bounds)) {
         onClick();
       }
@@ -143,19 +141,19 @@ inline Class<TouchHandler> onTouch(Action onClick) {
   };
 }
 
-inline void quad(shared_ptr<Renderable>& self) {
-  self = make_shared<Renderable>([] () {
+inline void quad(Renderable& self) {
+  self = Renderable([] () {
     // ... Render quad
     cout << "Rendering quad\n";
   });
 }
 
 inline Class<Widget> withSizeFn(function<SpaceSize ()> sizeFn, Class<Widget> base) {
-  return [=] (shared_ptr<Widget>& self) {
-    shared_ptr<Widget> _self;
+  return [=] (Widget& self) {
+    Widget _self;
     base(_self);
 
-    _self->getSize = sizeFn;
+    _self.getSize = sizeFn;
     self = _self;
   };
 }
@@ -167,25 +165,25 @@ inline Class<Widget> withSize(SpaceSize size, Class<Widget> base) {
 }
 
 inline Class<Widget> widget(Class<Renderable> renderable, Class<TouchHandler> touchHandler) {
-  return ([=] (shared_ptr<Widget>& self) {
-    shared_ptr<Widget> _self;
-    _self = make_shared<Widget>();
+  return ([=] (Widget& self) {
+    Widget _self;
+    _self = Widget();
 
-    shared_ptr<Renderable> _renderable;
+    Renderable _renderable;
     renderable(_renderable);
-    shared_ptr<TouchHandler> _touchHandler;
+    TouchHandler _touchHandler;
     touchHandler(_touchHandler);
 
-    _self->render = _renderable->render;
-    _self->handleTouch = _touchHandler->handleTouch;
+    _self.render = _renderable.render;
+    _self.handleTouch = _touchHandler.handleTouch;
 
     self = _self;
   });
 }
 
 inline Class<Widget> label(string text) {
-  return [=] (shared_ptr<Widget>& self) {
-    self = make_shared<Widget>(
+  return [=] (Widget& self) {
+    self = Widget(
         Layout([=] () {
           return SpaceSize({{50, 10}});}),
         TouchHandler(),
@@ -203,7 +201,7 @@ inline Program<Widget, int> yield(
     function<Class<Widget> (ValueTarget<int> escape)> body) {
 
   return [=] (function<Class<Widget> (int)> cont) -> Class<Widget> {
-    return [=] (shared_ptr<Widget>& self) {
+    return [=] (Widget& self) {
       auto target = valueTarget([=, &self] (int value) {
         auto nextClass = cont(value);
         nextClass(self);
@@ -219,7 +217,7 @@ inline Program<Widget, int> interrupt(
     function<Program<Widget, int> (ValueTarget<int> escape)> body) {
 
   return [=] (function<Class<Widget> (int)> cont) -> Class<Widget> {
-    return [=] (shared_ptr<Widget>& self) {
+    return [=] (Widget& self) {
       auto target = valueTarget([=, &self] (int value) {
         auto nextClass = cont(value);
         nextClass(self);
@@ -234,7 +232,7 @@ inline Program<Widget, int> interrupt(
 
 inline Class<Widget> runApp(Program<Widget, int> program) {
   return program([] (int value) -> Class<Widget> {
-    return [=] (shared_ptr<Widget>& /*self*/) -> void {
+    return [=] (Widget& /*self*/) -> void {
       exit(value);
     };
   });
@@ -246,18 +244,18 @@ inline Class<Widget> layout(Class<Widget> cls) {
 
 template <typename... Parameters>
 inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
-  return [=] (shared_ptr<Widget>& self) {
+  return [=] (Widget& self) {
     Class<Widget> classes[] {head, layout(tail...)};
-    array<shared_ptr<Widget>, 2> items;
+    array<Widget, 2> items;
     for (size_t i = 0; i < 2; ++i) {
       classes[i](items[i]);
     }
 
-    auto widget = make_shared<Widget>(makeUniform<Widget>([=] (function<void (shared_ptr<Widget>)> message) {
+    auto widget = Widget(makeUniform<Widget>([=] (function<void (Widget)> message) {
       // TODO: Cache.
       array<SpaceSize, 2> sizes;
       for (size_t i = 0; i < 2; ++i) {
-        sizes[i] = items[i]->getSize();
+        sizes[i] = items[i].getSize();
       }
 
       SpaceBounds parentBounds = parameters::bounds;
@@ -274,12 +272,12 @@ inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
       parameters::bounds = parentBounds;
     }));
 
-    widget->getSize = [=] () -> SpaceSize {
+    widget.getSize = [=] () -> SpaceSize {
 
       // TODO: Cache.
       SpaceSize size;
       for (size_t i = 0; i < 2; ++i) {
-        auto childSize = items[i]->getSize();
+        auto childSize = items[i].getSize();
         size[0] = std::max(size[0], childSize[0]);
         size[1] += childSize[1];
       }
@@ -297,12 +295,12 @@ auto app = yield([] (ValueTarget<int> finish) {
     button(finish(literal(3))));});
 
 int main() {
-  shared_ptr<Widget> widget;
+  Widget widget;
   runApp(app)(widget);
 
   parameters::bounds = {{{{0, 100}}, {{0, 100}}}};
-  widget->render();
-  widget->handleTouch(10, 20);
+  widget.render();
+  widget.handleTouch(10, 20);
 
   return 0;
 }
