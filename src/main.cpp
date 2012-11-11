@@ -44,213 +44,68 @@ inline bool pointInSpaceBounds(Point point, SpaceBounds bounds) {
   return inBounds;
 }
 
-template <typename T> struct Wrapper {};
-
-struct Layout {
-  virtual ~Layout();
-
-  virtual SpaceSize getSize() {return SpaceSize();}
-};
-
-Layout::~Layout() {
+template <typename T> T makeUniform(
+    function<void (function<void (shared_ptr<T>)>)> fn) {
+  return makeUniformDispatch(static_cast<T*>(nullptr), fn);
 }
 
-template <> struct Wrapper<Layout> : Layout {
-  shared_ptr<Layout> _base;
-  Wrapper(shared_ptr<Layout> base): _base(base) {}
+struct Layout {
+  Layout(): getSize([] () {return SpaceSize();}) {}
+  Layout(function<SpaceSize ()> _getSize): getSize(_getSize) {}
 
-  virtual SpaceSize getSize();
+  function<SpaceSize ()> getSize;
 };
 
-SpaceSize Wrapper<Layout>::getSize() {
-  return _base->getSize();
+inline Layout makeUniformDispatch(Layout*,
+    function<void (function<void (shared_ptr<Layout>)>)> /*fn*/) {
+  return Layout();
 }
 
 struct TouchHandler {
-  virtual ~TouchHandler();
-  virtual void handleTouch(int x, int y) = 0;
+  TouchHandler(): handleTouch([] (int, int) {}) {}
+  TouchHandler(function<void (int, int)> _handleTouch): handleTouch(_handleTouch) {}
+
+  function<void (int x, int y)> handleTouch;
 };
 
-TouchHandler::~TouchHandler() {
-}
-
-template <> struct Wrapper<TouchHandler> : TouchHandler {
-  shared_ptr<TouchHandler> _base;
-  Wrapper(shared_ptr<TouchHandler> base): _base(base) {}
-
-  virtual void handleTouch(int x, int y);
-};
-
-void Wrapper<TouchHandler>::handleTouch(int x, int y) {
-  _base->handleTouch(x, y);
+inline TouchHandler makeUniformDispatch(TouchHandler*,
+    function<void (function<void (shared_ptr<TouchHandler>)>)> fn) {
+  return TouchHandler([=] (int x, int y) {
+    fn(bind(&TouchHandler::handleTouch, std::placeholders::_1, x, y));
+  });
 }
 
 struct Renderable {
-  virtual ~Renderable();
-  virtual void render() = 0;
+  Renderable(): render([] () {}) {}
+  Renderable(function<void ()> _render): render(_render) {}
+
+  function<void ()> render;
 };
 
-Renderable::~Renderable() {
-}
-
-template <> struct Wrapper<Renderable> : Renderable {
-  shared_ptr<Renderable> _base;
-  Wrapper(shared_ptr<Renderable> base): _base(base) {}
-
-  virtual void render();
-};
-
-void Wrapper<Renderable>::render() {
-  _base->render();
+inline Renderable makeUniformDispatch(Renderable*,
+    function<void (function<void (shared_ptr<Renderable>)>)> fn) {
+  return Renderable([=] () {
+    fn([=] (shared_ptr<Renderable> renderable) {renderable->render();});
+  });
 }
 
 struct Widget : Layout, TouchHandler, Renderable {
-  virtual ~Widget();
-};
+  Widget() {}
 
-Widget::~Widget() {
-}
-
-template <> struct Wrapper<Widget> : Widget, Wrapper<Layout>, Wrapper<TouchHandler>, Wrapper<Renderable> {
-  Wrapper(shared_ptr<Widget> base):
-    Wrapper<Layout>(base), Wrapper<TouchHandler>(base), Wrapper<Renderable>(base) {
+  Widget(Layout layout, TouchHandler touchHandler, Renderable renderable):
+    Layout(layout), TouchHandler(touchHandler), Renderable(renderable) {
   }
-
-  virtual SpaceSize getSize();
-  virtual void handleTouch(int x, int y) {Wrapper<TouchHandler>::handleTouch(x, y);}
-  virtual void render() {Wrapper<Renderable>::render();}
 };
-
-SpaceSize Wrapper<Widget>::getSize() {
-  return Wrapper<Layout>::getSize();
-}
-
-inline shared_ptr<Layout> makeLayout(function<SpaceSize ()> onGetSize) {
-  struct Impl : Layout {
-    function<SpaceSize ()> _onGetSize;
-
-    Impl(function<SpaceSize ()> onGetSize2): _onGetSize(onGetSize2) {}
-
-    virtual SpaceSize getSize() {
-      return _onGetSize();
-    }
-  };
-
-  return make_shared<Impl>(onGetSize);
-}
-
-inline shared_ptr<TouchHandler> makeTouchHandler(function<void (int, int)> onHandleTouch) {
-  struct Impl : TouchHandler {
-    function<void (int, int)> _onHandleTouch;
-
-    Impl(function<void (int, int)> onHandleTouch2): _onHandleTouch(onHandleTouch2) {}
-
-    virtual void handleTouch(int x, int y) {
-      _onHandleTouch(x, y);
-    }
-  };
-
-  return make_shared<Impl>(onHandleTouch);
-}
-
-inline shared_ptr<Renderable> makeRenderable(function<void ()> onRender) {
-  struct Impl : Renderable {
-    function<void ()> _onRender;
-
-    Impl(function<void ()> onRender2): _onRender(onRender2) {}
-
-    virtual void render() {
-      _onRender();
-    }
-  };
-
-  return make_shared<Impl>(onRender);
-}
-
-inline void initializeNullImpl(shared_ptr<Widget>& instance) {
-  struct NullImpl : Widget {
-    virtual SpaceSize getSize() {
-      return SpaceSize();
-    }
-
-    virtual void handleTouch(int /*x*/, int /*y*/) {
-    }
-
-    virtual void render() {
-    }
-  };
-
-  instance = make_shared<NullImpl>();
-}
-
-template <typename T> shared_ptr<T> makeNullImpl() {
-  shared_ptr<T> instance;
-  initializeNullImpl(instance);
-  return instance;
-}
-
-inline shared_ptr<Widget> override(shared_ptr<Widget> base, shared_ptr<Layout> layout) {
-  struct Override : Wrapper<Widget> {
-    shared_ptr<Layout> _layout;
-
-    Override(shared_ptr<Layout> layout2, shared_ptr<Widget> base2):
-      Wrapper<Widget>(base2), _layout(layout2) {
-    }
-
-    virtual SpaceSize getSize() {
-      return _layout->getSize();
-    }
-  };
-
-  return make_shared<Override>(layout, base);
-}
-
-inline shared_ptr<Widget> override(shared_ptr<Widget> base, shared_ptr<TouchHandler> touchHandler) {
-  struct Override : Wrapper<Widget> {
-    shared_ptr<TouchHandler> _touchHandler;
-
-    Override(shared_ptr<TouchHandler> touchHandler2, shared_ptr<Widget> base2):
-      Wrapper<Widget>(base2), _touchHandler(touchHandler2) {
-    }
-
-    virtual void handleTouch(int x, int y) {
-      _touchHandler->handleTouch(x, y);
-    }
-  };
-
-  return make_shared<Override>(touchHandler, base);
-}
-
-inline shared_ptr<Widget> override(shared_ptr<Widget> base, shared_ptr<Renderable> renderable) {
-  struct Override : Wrapper<Widget> {
-    shared_ptr<Renderable> _renderable;
-
-    Override(shared_ptr<Renderable> renderable2, shared_ptr<Widget> base2):
-      Wrapper<Widget>(base2), _renderable(renderable2) {
-    }
-
-    virtual void render() {
-      _renderable->render();
-    }
-  };
-
-  return make_shared<Override>(renderable, base);
-}
-
-inline shared_ptr<Widget> makeUniform(function<void (function<void (shared_ptr<Widget>)> message)> handleMessage) {
-  return override(
-      override(makeNullImpl<Widget>(),
-        makeTouchHandler(
-          [=] (int x, int y) {
-            handleMessage(bind(&TouchHandler::handleTouch, std::placeholders::_1, x, y));
-          })),
-      makeRenderable(
-        [=] () {
-          handleMessage(bind(&Renderable::render, std::placeholders::_1));
-        }));
-}
 
 struct Void {};
+
+inline Widget makeUniformDispatch(Widget*,
+    function<void (function<void (shared_ptr<Widget>)>)> fn) {
+  return Widget(
+      makeUniform<Layout>(fn),
+      makeUniform<TouchHandler>(fn),
+      makeUniform<Renderable>(fn));
+}
 
 using Action = function<void ()>;
 template <typename T> using Class = function<void (shared_ptr<T>& self)>;
@@ -275,93 +130,30 @@ template <typename T> ValueExpression<T> literal(T value) {
   };
 }
 
-inline void nullRenderable(shared_ptr<Renderable>& self) {
-  struct _NullRenderable : Renderable {
-    virtual void render() {
-    }
-  };
-
-  self = make_shared<_NullRenderable>();
-}
-
-inline void nullTouchHandler(shared_ptr<TouchHandler>& self) {
-  struct NullTouchHandler : TouchHandler {
-    virtual void handleTouch(int /*x*/, int /*y*/) {
-    }
-  };
-
-  self = make_shared<NullTouchHandler>();
-}
-
-inline Class<Widget> widget(
-    Class<Renderable> renderable,
-    Class<TouchHandler> touchHandler) {
-
-  struct WidgetImpl : Widget {
-    shared_ptr<Renderable> _renderable;
-    shared_ptr<TouchHandler> _touchHandler;
-
-    virtual void render() {
-      _renderable->render();
-    }
-
-    virtual void handleTouch(int x, int y) {
-      _touchHandler->handleTouch(x, y);
-    }
-  };
-
-  return [=] (shared_ptr<Widget>& self) {
-    shared_ptr<Renderable> renderableInstance;
-    renderable(renderableInstance);
-
-    shared_ptr<TouchHandler> touchHandlerInstance;
-    touchHandler(touchHandlerInstance);
-
-    auto widget = make_shared<WidgetImpl>();
-    widget->_renderable = renderableInstance;
-    widget->_touchHandler = touchHandlerInstance;
-    self = widget;
-  };
-}
-
 inline Class<TouchHandler> onTouch(Action onClick) {
-  struct TouchHandlerImpl : TouchHandler {
-    Action _onClick;
-
-    TouchHandlerImpl(
-        Action const& onClick2):
-      _onClick(onClick2) {
-    }
-
-    virtual void handleTouch(int x, int y) {
-      if (pointInSpaceBounds({{x, y}}, parameters::bounds)) {
-        _onClick();
-      }
-    }
-  };
-
   return [=] (shared_ptr<TouchHandler>& self) {
-    self = make_shared<TouchHandlerImpl>(onClick);
+    self = make_shared<TouchHandler>([=] (int x, int y) {
+      if (pointInSpaceBounds({{x, y}}, parameters::bounds)) {
+        onClick();
+      }
+    });
   };
 }
 
 inline void quad(shared_ptr<Renderable>& self) {
-  struct RenderableImpl : Renderable {
-    virtual void render() {
-      // ... Render quad
-      cout << "Rendering quad\n";
-    }
-  };
-
-  self = make_shared<RenderableImpl>();
+  self = make_shared<Renderable>([] () {
+     // ... Render quad
+     cout << "Rendering quad\n";
+   });
 }
 
 inline Class<Widget> withSizeFn(function<SpaceSize ()> sizeFn, Class<Widget> base) {
   return [=] (shared_ptr<Widget>& self) {
-    shared_ptr<Widget> _base;
-    base(_base);
+    shared_ptr<Widget> _self;
+    base(_self);
 
-    self = override(_base, makeLayout(sizeFn));
+    _self->getSize = sizeFn;
+    self = _self;
   };
 }
 
@@ -369,6 +161,23 @@ inline Class<Widget> withSize(SpaceSize size, Class<Widget> base) {
   return withSizeFn([=] () {
       return size;
     }, base);
+}
+
+inline Class<Widget> widget(Class<Renderable> renderable, Class<TouchHandler> touchHandler) {
+  return ([=] (shared_ptr<Widget>& self) {
+    shared_ptr<Widget> _self;
+    _self = make_shared<Widget>();
+
+    shared_ptr<Renderable> _renderable;
+    renderable(_renderable);
+    shared_ptr<TouchHandler> _touchHandler;
+    touchHandler(_touchHandler);
+
+    _self->render = _renderable->render;
+    _self->handleTouch = _touchHandler->handleTouch;
+
+    self = _self;
+  });
 }
 
 inline Class<Widget> button(Action onClick) {
@@ -430,10 +239,12 @@ inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
       classes[i](items[i]);
     }
 
-    auto widget = makeUniform([=] (function<void (shared_ptr<Widget>)> message) {
+    auto widget = make_shared<Widget>(makeUniform<Widget>([=] (function<void (shared_ptr<Widget>)> message) {
       // TODO: Cache.
       array<SpaceSize, 2> sizes;
-      std::transform(items.begin(), items.end(), sizes.begin(), std::bind(&Layout::getSize, std::placeholders::_1));
+      for (size_t i = 0; i < 2; ++i) {
+        sizes[i] = items[i]->getSize();
+      }
 
       SpaceBounds parentBounds = parameters::bounds;
 
@@ -447,7 +258,7 @@ inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
       }
 
       parameters::bounds = parentBounds;
-    });
+    }));
     self = widget;
   };
 }
