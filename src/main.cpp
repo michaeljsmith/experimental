@@ -93,9 +93,20 @@ inline Renderable makeUniformDispatch(Renderable*,
 struct Widget : Layout, TouchHandler, Renderable {
   Widget() {}
 
-  Widget(Layout layout, TouchHandler touchHandler, Renderable renderable):
-    Layout(layout), TouchHandler(touchHandler), Renderable(renderable) {
+  template <typename Head, typename... Tail>
+  Widget(Head head, Tail... parameters):
+    Widget(head, Widget(parameters...))  {
   }
+
+private:
+  Widget(Layout layout, Widget base):
+    Layout(layout), TouchHandler(base), Renderable(base) {}
+
+  Widget(TouchHandler touchHandler, Widget base):
+    Layout(base), TouchHandler(touchHandler), Renderable(base) {}
+
+  Widget(Renderable renderable, Widget base):
+    Layout(base), TouchHandler(base), Renderable(renderable) {}
 };
 
 struct Void {};
