@@ -2,6 +2,8 @@
 #include <functional>
 #include <iostream>
 #include <array>
+#include <string>
+#include <numeric>
 
 using std::shared_ptr;
 using std::make_shared;
@@ -9,6 +11,7 @@ using std::function;
 using std::cout;
 using std::array;
 using std::bind;
+using std::string;
 
 using Bounds = array<int, 2>;
 
@@ -33,7 +36,7 @@ inline Bounds boundsFromPositionAndSize(int position, int size) {
 }
 
 inline bool positionInBounds(int position, Bounds bounds) {
-  return position >= bounds[0] && position <= bounds[1];
+  return position >= bounds[0] && position < bounds[1];
 }
 
 inline bool pointInSpaceBounds(Point point, SpaceBounds bounds) {
@@ -142,9 +145,9 @@ inline Class<TouchHandler> onTouch(Action onClick) {
 
 inline void quad(shared_ptr<Renderable>& self) {
   self = make_shared<Renderable>([] () {
-     // ... Render quad
-     cout << "Rendering quad\n";
-   });
+    // ... Render quad
+    cout << "Rendering quad\n";
+  });
 }
 
 inline Class<Widget> withSizeFn(function<SpaceSize ()> sizeFn, Class<Widget> base) {
@@ -178,6 +181,17 @@ inline Class<Widget> widget(Class<Renderable> renderable, Class<TouchHandler> to
 
     self = _self;
   });
+}
+
+inline Class<Widget> label(string text) {
+  return [=] (shared_ptr<Widget>& self) {
+    self = make_shared<Widget>(
+        Layout([=] () {
+          return SpaceSize({{50, 10}});}),
+        TouchHandler(),
+        Renderable([=] () {
+          // ... Render text
+          cout << "Rendering text \"" + text + "\"\n";}));};
 }
 
 inline Class<Widget> button(Action onClick) {
@@ -248,7 +262,7 @@ inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
 
       SpaceBounds parentBounds = parameters::bounds;
 
-      int currentPosition = 0;
+      int currentPosition = parentBounds[1][0];
       for (size_t i = 0; i < 2; ++i) {
         parameters::bounds[0] = boundsConstrainedToSize(parentBounds[0], sizes[i][0]);
         parameters::bounds[1] = boundsFromPositionAndSize(currentPosition, sizes[i][1]);
@@ -259,12 +273,26 @@ inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
 
       parameters::bounds = parentBounds;
     }));
+
+    widget->getSize = [=] () -> SpaceSize {
+
+      // TODO: Cache.
+      SpaceSize size;
+      for (size_t i = 0; i < 2; ++i) {
+        auto childSize = items[i]->getSize();
+        size[0] = std::max(size[0], childSize[0]);
+        size[1] += childSize[1];
+      }
+
+      return size;
+    };
     self = widget;
   };
 }
 
 auto app = yield([] (ValueTarget<int> finish) {
   return layout(
+    label("Hello, world!"),
     button(finish(literal(5))),
     button(finish(literal(3))));});
 
@@ -274,7 +302,7 @@ int main() {
 
   parameters::bounds = {{{{0, 100}}, {{0, 100}}}};
   widget->render();
-  widget->handleTouch(10, 10);
+  widget->handleTouch(10, 20);
 
   return 0;
 }
