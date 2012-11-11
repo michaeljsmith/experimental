@@ -95,17 +95,17 @@ struct Widget : Layout, TouchHandler, Renderable {
 
   template <typename Head, typename... Tail>
   Widget(Head head, Tail... parameters):
-    Widget(head, Widget(parameters...))  {
+    Widget(static_cast<int*>(nullptr), head, Widget(parameters...))  {
   }
 
 private:
-  Widget(Layout layout, Widget base):
+  Widget(int*, Layout layout, Widget base):
     Layout(layout), TouchHandler(base), Renderable(base) {}
 
-  Widget(TouchHandler touchHandler, Widget base):
+  Widget(int*, TouchHandler touchHandler, Widget base):
     Layout(base), TouchHandler(touchHandler), Renderable(base) {}
 
-  Widget(Renderable renderable, Widget base):
+  Widget(int*, Renderable renderable, Widget base):
     Layout(base), TouchHandler(base), Renderable(renderable) {}
 };
 
@@ -262,7 +262,22 @@ inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
       classes[i](items[i]);
     }
 
-    auto widget = Widget(makeUniform<Widget>([=] (function<void (Widget)> message) {
+    auto widget = Widget(
+
+      Layout([=] () -> SpaceSize {
+
+        // TODO: Cache.
+        SpaceSize size;
+        for (size_t i = 0; i < 2; ++i) {
+          auto childSize = items[i].getSize();
+          size[0] = std::max(size[0], childSize[0]);
+          size[1] += childSize[1];
+        }
+
+        return size;
+      }),
+
+      makeUniform<Widget>([=] (function<void (Widget)> message) {
       // TODO: Cache.
       array<SpaceSize, 2> sizes;
       for (size_t i = 0; i < 2; ++i) {
@@ -283,18 +298,6 @@ inline Class<Widget> layout(Class<Widget> head, Parameters... tail) {
       parameters::bounds = parentBounds;
     }));
 
-    widget.getSize = [=] () -> SpaceSize {
-
-      // TODO: Cache.
-      SpaceSize size;
-      for (size_t i = 0; i < 2; ++i) {
-        auto childSize = items[i].getSize();
-        size[0] = std::max(size[0], childSize[0]);
-        size[1] += childSize[1];
-      }
-
-      return size;
-    };
     self = widget;
   };
 }
