@@ -2,49 +2,71 @@
 #include <memory>
 #include <string>
 #include <iostream>
+#include <array>
 
 using std::function;
 using std::shared_ptr;
 using std::make_shared;
 using std::string;
 using std::cout;
+using std::array;
 
-template <typename T> using Class = function<shared_ptr<T> ()>;
+using Bound = int;
+using AxisBounds = array<Bound, 2>;
+using Bounds = array<AxisBounds, 2>;
 
-struct Action {
-  function<void ()> perform;
-};
-
-struct ClickHandler {
-  function<void (int x, int y)> onClick;
-};
-
-inline Class<ClickHandler> onClick(Class<Action> action) {
-  return [=] () -> shared_ptr<ClickHandler> {
-    auto _action = action();
-
-    shared_ptr<ClickHandler> self = make_shared<ClickHandler>();
-
-    self->onClick = [=] (int /*x*/, int /*y*/) {
-      _action->perform();
-    };
-
-    return self;
+namespace objects {
+  struct Action {
+    function<void ()> perform;
   };
 }
 
-inline Class<Action> print(string text) {
-  return [=] () -> shared_ptr<Action> {
-    auto self = make_shared<Action>();
-    self->perform = [=] () {
-      cout << text;
-    };
+namespace classes {
+  using Action = function<shared_ptr<objects::Action> ()>;
+}
 
-    return self;
+namespace objects {
+  struct ClickHandler {
+    function<void (int x, int y)> onClick;
   };
+}
+
+namespace classes {
+  using ClickHandler = function<shared_ptr<objects::ClickHandler> ()>;
+}
+
+namespace classes {
+  inline ClickHandler onClick(Action action) {
+    return [=] () -> shared_ptr<objects::ClickHandler> {
+      auto _action = action();
+
+      auto self = make_shared<objects::ClickHandler>();
+
+      self->onClick = [=] (int /*x*/, int /*y*/) {
+        _action->perform();
+      };
+
+      return self;
+    };
+  }
+}
+
+namespace classes {
+  inline Action print(string text) {
+    return [=] () -> shared_ptr<objects::Action> {
+      auto self = make_shared<objects::Action>();
+      self->perform = [=] () {
+        cout << text;
+      };
+
+      return self;
+    };
+  }
 }
 
 int main() {
+  using namespace classes;
+
   auto app = onClick(print("hello\n"));
   auto _app = app();
 
