@@ -34,12 +34,17 @@ inline bool pointInBounds(Point point, Bounds bounds) {
 
 namespace objects {
   struct Action {
-    function<void ()> perform;
+    Action(function<void ()> fn):
+      _perform(make_shared<function<void ()>>(fn)) {
+    }
+
+    void perform() {(*_perform)();}
+    shared_ptr<function<void ()>> _perform;
   };
 }
 
 namespace classes {
-  using Action = function<shared_ptr<objects::Action> ()>;
+  using Action = function<objects::Action ()>;
 }
 
 namespace objects {
@@ -82,10 +87,10 @@ namespace classes {
 
       auto self = make_shared<objects::ClickHandler>();
 
-      self->onClick = [=] (int x, int y) {
+      self->onClick = [=] (int x, int y) mutable {
         auto _currentBounds = _bounds->evaluate();
         if (pointInBounds({{x, y}}, _currentBounds)) {
-          _action->perform();
+          _action.perform();
         }
       };
 
@@ -126,13 +131,11 @@ namespace classes {
 
 namespace classes {
   inline Action print(string text) {
-    return [=] () -> shared_ptr<objects::Action> {
-      auto self = make_shared<objects::Action>();
-      self->perform = [=] () {
-        cout << text;
-      };
-
-      return self;
+    return [=] () {
+      return objects::Action(
+          [=] () {
+            cout << text;
+          }); 
     };
   }
 }
