@@ -49,22 +49,25 @@ namespace classes {
 
 namespace objects {
   template <typename T> struct Expression {
-    function<T ()> evaluate;
+    Expression(function<T ()> fn):
+      _evaluate(make_shared<function<T ()>>(fn)) {
+    }
+
+    T evaluate() const {return (*_evaluate)();}
+    shared_ptr<function<T ()>> _evaluate;
   };
 }
 
 namespace classes {
   template <typename T> using Expression =
-    function<shared_ptr<objects::Expression<T>> ()>;
+    function<objects::Expression<T> ()>;
 
   template <typename T> Expression<T> literal(T value) {
-    return [=] () -> shared_ptr<objects::Expression<T>> {
-      auto self = make_shared<objects::Expression<T>>();
-      self->evaluate = [=] () {
-        return value;
-      };
-
-      return self;
+    return [=] () {
+      return objects::Expression<T>(
+        [=] () {
+          return value;
+        });
     };
   }
 }
@@ -88,7 +91,7 @@ namespace classes {
       auto self = make_shared<objects::ClickHandler>();
 
       self->onClick = [=] (int x, int y) mutable {
-        auto _currentBounds = _bounds->evaluate();
+        auto _currentBounds = _bounds.evaluate();
         if (pointInBounds({{x, y}}, _currentBounds)) {
           _action.perform();
         }
@@ -116,7 +119,7 @@ namespace classes {
 
       auto self = make_shared<objects::Renderable>();
       self->render = [=] () {
-        auto _currentBounds = _bounds->evaluate();
+        auto _currentBounds = _bounds.evaluate();
         cout << "Rendering quad at <" <<
           _currentBounds[0][0] << ", " <<
           _currentBounds[0][1] << ", " <<
