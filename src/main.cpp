@@ -74,30 +74,32 @@ namespace classes {
 
 namespace objects {
   struct ClickHandler {
-    function<void (int x, int y)> onClick;
+    ClickHandler(function<void (int, int)> fn):
+      _onClick(make_shared<function<void (int, int)>>(fn)) {
+    }
+
+    void onClick(int x, int y) {return (*_onClick)(x, y);}
+    shared_ptr<function<void (int x, int y)>> _onClick;
   };
 }
 
 namespace classes {
-  using ClickHandler = function<shared_ptr<objects::ClickHandler> (Expression<Bounds>)>;
+  using ClickHandler = function<objects::ClickHandler (Expression<Bounds>)>;
 }
 
 namespace classes {
   inline ClickHandler onClick(Action action) {
-    return [=] (Expression<Bounds> bounds) -> shared_ptr<objects::ClickHandler> {
+    return [=] (Expression<Bounds> bounds) -> objects::ClickHandler {
       auto _action = action();
       auto _bounds = bounds();
 
-      auto self = make_shared<objects::ClickHandler>();
-
-      self->onClick = [=] (int x, int y) mutable {
-        auto _currentBounds = _bounds.evaluate();
-        if (pointInBounds({{x, y}}, _currentBounds)) {
-          _action.perform();
-        }
-      };
-
-      return self;
+      return objects::ClickHandler(
+        [=] (int x, int y) mutable {
+          auto _currentBounds = _bounds.evaluate();
+          if (pointInBounds({{x, y}}, _currentBounds)) {
+            _action.perform();
+          }
+        });
     };
   }
 }
@@ -149,7 +151,7 @@ int main() {
   auto app = onClick(print("hello\n"));
   auto _app = app(literal<Bounds>({{{{0, 100}}, {{0, 100}}}}));
 
-  _app->onClick(10, 10);
+  _app.onClick(10, 10);
 
   return 0;
 }
