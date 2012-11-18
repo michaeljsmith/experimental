@@ -94,6 +94,36 @@ namespace classes {
   }
 }
 
+namespace objects {
+  struct Renderable {
+    function<void ()> render;
+  };
+}
+
+namespace classes {
+  using Renderable = function<shared_ptr<objects::Renderable> (Expression<Bounds>)>;
+}
+
+namespace classes {
+  inline Renderable quad() {
+    return [=] (Expression<Bounds> bounds) -> shared_ptr<objects::Renderable> {
+      auto _bounds = bounds();
+
+      auto self = make_shared<objects::Renderable>();
+      self->render = [=] () {
+        auto _currentBounds = _bounds->evaluate();
+        cout << "Rendering quad at <" <<
+          _currentBounds[0][0] << ", " <<
+          _currentBounds[0][1] << ", " <<
+          _currentBounds[1][0] << ", " <<
+          _currentBounds[1][1] << ">";
+      };
+
+      return self;
+    };
+  }
+}
+
 namespace classes {
   inline Action print(string text) {
     return [=] () -> shared_ptr<objects::Action> {
