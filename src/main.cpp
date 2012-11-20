@@ -137,6 +137,29 @@ namespace classes {
   }
 }
 
+namespace objects {
+  struct Widget : Renderable, ClickHandler {
+    Widget(Renderable renderable, ClickHandler clickHandler):
+      Renderable(renderable), ClickHandler(clickHandler) {
+    }
+  };
+}
+
+namespace classes {
+  using Widget = function<shared_ptr<objects::Widget> (Expression<Bounds>)>;
+}
+
+namespace classes {
+  inline Widget widget(Renderable renderable, ClickHandler clickHandler) {
+    return [=] (Expression<Bounds> bounds) {
+      // TODO: Share references to bounds?
+      return objects::Widget(
+          renderable(bounds),
+          clickHandler(bounds));
+    };
+  }
+}
+
 namespace classes {
   inline Action print(string text) {
     return [=] () {
