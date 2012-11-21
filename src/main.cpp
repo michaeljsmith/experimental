@@ -32,152 +32,25 @@ inline bool pointInBounds(Point point, Bounds bounds) {
   return true;
 }
 
-namespace objects {
-  struct Action {
-    Action(function<void ()> fn):
-      _perform(make_shared<function<void ()>>(fn)) {
-    }
+struct Widget {
+  Widget(function<void (int, int)> _onClick): onClick(_onClick) {}
+  function<void (int, int)> onClick;
+};
 
-    void perform() {(*_perform)();}
-    shared_ptr<function<void ()>> _perform;
-  };
-}
+//inline shared_ptr<Widget> optionsMenu() {
+//}
 
-namespace classes {
-  using Action = function<objects::Action ()>;
-}
-
-namespace objects {
-  template <typename T> struct Expression {
-    Expression(function<T ()> fn):
-      _evaluate(make_shared<function<T ()>>(fn)) {
-    }
-
-    T evaluate() const {return (*_evaluate)();}
-    shared_ptr<function<T ()>> _evaluate;
-  };
-}
-
-namespace classes {
-  template <typename T> using Expression =
-    function<objects::Expression<T> ()>;
-
-  template <typename T> Expression<T> literal(T value) {
-    return [=] () {
-      return objects::Expression<T>(
-        [=] () {
-          return value;
-        });
-    };
-  }
-}
-
-namespace objects {
-  struct ClickHandler {
-    ClickHandler(function<void (int, int)> fn):
-      _onClick(make_shared<function<void (int, int)>>(fn)) {
-    }
-
-    void onClick(int x, int y) {return (*_onClick)(x, y);}
-    shared_ptr<function<void (int x, int y)>> _onClick;
-  };
-}
-
-namespace classes {
-  using ClickHandler = function<objects::ClickHandler (Expression<Bounds>)>;
-}
-
-namespace classes {
-  inline ClickHandler onClick(Action action) {
-    return [=] (Expression<Bounds> bounds) -> objects::ClickHandler {
-      auto _action = action();
-      auto _bounds = bounds();
-
-      return objects::ClickHandler(
-        [=] (int x, int y) mutable {
-          auto _currentBounds = _bounds.evaluate();
-          if (pointInBounds({{x, y}}, _currentBounds)) {
-            _action.perform();
-          }
-        });
-    };
-  }
-}
-
-namespace objects {
-  struct Renderable {
-    Renderable(function<void ()> fn):
-      _render(make_shared<function<void ()>>(fn)) {
-    }
-
-    void render() {(*_render)();}
-    shared_ptr<function<void ()>> _render;
-  };
-}
-
-namespace classes {
-  using Renderable = function<objects::Renderable (Expression<Bounds>)>;
-}
-
-namespace classes {
-  inline Renderable quad() {
-    return [=] (Expression<Bounds> bounds) -> objects::Renderable {
-      auto _bounds = bounds();
-
-      return objects::Renderable(
-        [=] () {
-          auto _currentBounds = _bounds.evaluate();
-          cout << "Rendering quad at <" <<
-            _currentBounds[0][0] << ", " <<
-            _currentBounds[0][1] << ", " <<
-            _currentBounds[1][0] << ", " <<
-            _currentBounds[1][1] << ">";
-        });
-    };
-  }
-}
-
-namespace objects {
-  struct Widget : Renderable, ClickHandler {
-    Widget(Renderable renderable, ClickHandler clickHandler):
-      Renderable(renderable), ClickHandler(clickHandler) {
-    }
-  };
-}
-
-namespace classes {
-  using Widget = function<shared_ptr<objects::Widget> (Expression<Bounds>)>;
-}
-
-namespace classes {
-  inline Widget widget(Renderable renderable, ClickHandler clickHandler) {
-    return [=] (Expression<Bounds> bounds) {
-      // TODO: Share references to bounds?
-      return objects::Widget(
-          renderable(bounds),
-          clickHandler(bounds));
-    };
-  }
-}
-
-namespace classes {
-  inline Action print(string text) {
-    return [=] () {
-      return objects::Action(
-          [=] () {
-            cout << text;
-          }); 
-    };
-  }
+inline shared_ptr<Widget> mainMenu() {
+  auto self = make_shared<Widget>([=] (int, int) {
+    cout << "clicked\n";
+    self->onClick
+  });
+  return self;
 }
 
 int main() {
-  using namespace classes;
-
-  auto app = onClick(print("hello\n"));
-  auto _app = app(literal<Bounds>({{{{0, 100}}, {{0, 100}}}}));
-
-  _app.onClick(10, 10);
+  auto app = mainMenu();
+  app->onClick(5, 5);
 
   return 0;
 }
