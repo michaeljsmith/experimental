@@ -1,13 +1,8 @@
-#include <functional>
-#include <memory>
-#include <string>
-#include <iostream>
+#include <boost/function.hpp>
 #include <array>
+#include <iostream>
 
-using std::function;
-using std::shared_ptr;
-using std::make_shared;
-using std::string;
+using boost::function;
 using std::cout;
 using std::array;
 
@@ -33,37 +28,67 @@ inline bool pointInBounds(Point point, Bounds bounds) {
 }
 
 struct Widget {
-  Widget() {}
-  Widget(function<void (int, int)> _onClick): onClick(_onClick) {}
-  function<void (int, int)> onClick;
+  function<void (int, int)> handleClick;
 };
 
-inline void app(function<void (Widget)> yield, function<void (int)> finish) {
-  function<void (function<void (Widget)>)> menu2 = [=] (function<void (Widget)> k) {
-    k(Widget([=] (int, int) {
-        finish(3);
-    }));
+inline function<void (function<void (int)>)> literal(int value) {
+  return [=] (function<void (int)> k) {
+    k(value);
   };
-
-  function<void (function<void (Widget)>)> menu1 = [=] (function<void (Widget)> k) {
-    k(Widget([=] (int, int) {
-      menu2(yield);
-    }));
-  };
-
-  menu1(yield);
 }
 
-int main() {
-  Widget _app;
-  app([&_app] (Widget widget) {
-      _app = widget;
-    }, [] (int result) {
-      exit(result);
+inline function<void (function<void (int)>)> let(
+    function<void (function<void (int)>)> expression,
+    function<function<void (function<void (int)>)>(function<void (function<void (int)>)>)> body) {
+  return [=] (function<void (int)> k) {
+    expression([=] (int value) {
+      body(literal(value))(k);
     });
+  };
+}
 
-  _app.onClick(5, 5);
-  _app.onClick(5, 5);
+inline function<void (function<void (int)>)> sequence(
+    function<void (function<void (int)>)> action0,
+    function<void (function<void (int)>)> action1) {
+  return [=] (function<void (int)> k) {
+    action0([=] (int) {
+      action1(k);
+    });
+  };
+}
+
+inline function<void (function<void (int)>)> sum(
+    function<void (function<void (int)>)> x0,
+    function<void (function<void (int)>)> x1) {
+  return [=] (function<void (int)> k) {
+    x0([=] (int _x0) {
+      x1([=] (int _x1) {
+        k(_x0 + _x1);
+      });
+    });
+  };
+}
+
+inline function<void (function<void (int)>)> printAndReturn(function<void (function<void (int)>)> expression) {
+  return [=] (function<void (int)> k) {
+    expression([=] (int value) {
+      cout << "printAndReturn " << value << "\n";
+      k(value);
+    });
+  };
+}
+
+auto app = 
+  let(printAndReturn(literal(5)), [=] (function<void (function<void (int)>)> value1) {
+    return sequence(
+        printAndReturn(sum(value1, literal(1))),
+        printAndReturn(sum(value1, literal(2))));
+  });
+
+int main() {
+  app([=] (int result) {
+    exit(result);
+  });
 
   return 0;
 }
