@@ -33,6 +33,15 @@ struct Widget {
 
 using Expression = function<void (function<void (int)>)>;
 
+//callCC f k = f (\a _ -> k a) k
+inline Expression callCC(function<void (function<void (Expression)>)> body) {
+  return [=] (function<void (int)> k) {
+    body([=] (Expression result) {
+      result(k);
+    });
+  };
+}
+
 inline Expression literal(int value) {
   return [=] (function<void (int)> k) {
     k(value);
