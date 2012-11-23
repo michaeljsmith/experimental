@@ -31,15 +31,17 @@ struct Widget {
   function<void (int, int)> handleClick;
 };
 
-inline function<void (function<void (int)>)> literal(int value) {
+using Expression = function<void (function<void (int)>)>;
+
+inline Expression literal(int value) {
   return [=] (function<void (int)> k) {
     k(value);
   };
 }
 
-inline function<void (function<void (int)>)> let(
-    function<void (function<void (int)>)> expression,
-    function<function<void (function<void (int)>)>(function<void (function<void (int)>)>)> body) {
+inline Expression let(
+    Expression expression,
+    function<Expression (Expression)> body) {
   return [=] (function<void (int)> k) {
     expression([=] (int value) {
       body(literal(value))(k);
@@ -47,9 +49,9 @@ inline function<void (function<void (int)>)> let(
   };
 }
 
-inline function<void (function<void (int)>)> sequence(
-    function<void (function<void (int)>)> action0,
-    function<void (function<void (int)>)> action1) {
+inline Expression sequence(
+    Expression action0,
+    Expression action1) {
   return [=] (function<void (int)> k) {
     action0([=] (int) {
       action1(k);
@@ -57,9 +59,9 @@ inline function<void (function<void (int)>)> sequence(
   };
 }
 
-inline function<void (function<void (int)>)> sum(
-    function<void (function<void (int)>)> x0,
-    function<void (function<void (int)>)> x1) {
+inline Expression sum(
+    Expression x0,
+    Expression x1) {
   return [=] (function<void (int)> k) {
     x0([=] (int _x0) {
       x1([=] (int _x1) {
@@ -69,7 +71,7 @@ inline function<void (function<void (int)>)> sum(
   };
 }
 
-inline function<void (function<void (int)>)> printAndReturn(function<void (function<void (int)>)> expression) {
+inline Expression printAndReturn(Expression expression) {
   return [=] (function<void (int)> k) {
     expression([=] (int value) {
       cout << "printAndReturn " << value << "\n";
@@ -79,7 +81,7 @@ inline function<void (function<void (int)>)> printAndReturn(function<void (funct
 }
 
 auto app = 
-  let(printAndReturn(literal(5)), [=] (function<void (function<void (int)>)> value1) {
+  let(printAndReturn(literal(5)), [=] (Expression value1) {
     return sequence(
         printAndReturn(sum(value1, literal(1))),
         printAndReturn(sum(value1, literal(2))));
