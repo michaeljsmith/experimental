@@ -68,12 +68,16 @@ template <typename T, typename V> inline Expr<T> let(
   };
 }
 
-template <typename T, typename T0> inline Expr<T> sequence(
-    Expr<T0> action0,
-    Expr<T> action1) {
-  return [=] (function<void (T)> k) {
-    action0([=] (T0) {
-      action1(k);
+template <typename T> inline T valueNull(Expr<T>) {exit(1);}
+
+template <typename T> Expr<T> sequence(Expr<T> expr) {
+  return expr;
+}
+
+template <typename T, typename... Rest> auto sequence(Expr<T> head, Rest... rest) -> decltype(sequence(rest...)) {
+  return [=] (function<void (decltype(valueNull(sequence(rest...))))> k) {
+    head([=] (T) {
+      sequence(rest...)(k);
     });
   };
 }
