@@ -31,12 +31,12 @@ struct Widget {
   function<void (int, int)> handleClick;
 };
 
-using Expression = function<void (function<void (int)>)>;
+template <typename T> using Expr = function<void (function<void (T)>)>;
 
 //callCC f k = f (\a _ -> k a) k
-inline Expression callCC(function<Expression (function<Expression (Expression)>)> body) {
+inline Expr<int> callCC(function<Expr<int> (function<Expr<int> (Expr<int>)>)> body) {
   return [=] (function<void (int)> k) {
-    body([=] (Expression result) -> Expression {
+    body([=] (Expr<int> result) -> Expr<int> {
       return [=] (function<void (int)> /*ignoredContinuation*/) {
         result(k);
       };
@@ -44,24 +44,24 @@ inline Expression callCC(function<Expression (function<Expression (Expression)>)
   };
 }
 
-auto metaContinuation = function<Expression (Expression)>([] (Expression /*value*/) -> Expression {
+auto metaContinuation = function<Expr<int> (Expr<int>)>([] (Expr<int> /*value*/) -> Expr<int> {
   cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
   exit(1);
   });
 
-inline Expression abort(Expression thunk) {
+inline Expr<int> abort(Expr<int> thunk) {
   return metaContinuation(thunk);
 }
 
-inline Expression literal(int value) {
+inline Expr<int> literal(int value) {
   return [=] (function<void (int)> k) {
     k(value);
   };
 }
 
-inline Expression let(
-    Expression expression,
-    function<Expression (Expression)> body) {
+inline Expr<int> let(
+    Expr<int> expression,
+    function<Expr<int> (Expr<int>)> body) {
   return [=] (function<void (int)> k) {
     expression([=] (int value) {
       body(literal(value))(k);
@@ -69,9 +69,9 @@ inline Expression let(
   };
 }
 
-inline Expression sequence(
-    Expression action0,
-    Expression action1) {
+inline Expr<int> sequence(
+    Expr<int> action0,
+    Expr<int> action1) {
   return [=] (function<void (int)> k) {
     action0([=] (int) {
       action1(k);
@@ -79,9 +79,9 @@ inline Expression sequence(
   };
 }
 
-inline Expression sum(
-    Expression x0,
-    Expression x1) {
+inline Expr<int> sum(
+    Expr<int> x0,
+    Expr<int> x1) {
   return [=] (function<void (int)> k) {
     x0([=] (int _x0) {
       x1([=] (int _x1) {
@@ -91,7 +91,7 @@ inline Expression sum(
   };
 }
 
-inline Expression printAndReturn(Expression expression) {
+inline Expr<int> printAndReturn(Expr<int> expression) {
   return [=] (function<void (int)> k) {
     expression([=] (int value) {
       cout << "printAndReturn " << value << "\n";
@@ -101,9 +101,9 @@ inline Expression printAndReturn(Expression expression) {
 }
 
 auto app = 
-  let(printAndReturn(literal(5)), [=] (Expression value1) {
+  let(printAndReturn(literal(5)), [=] (Expr<int> value1) {
     return sequence(
-      callCC([=] (function<Expression (Expression)> exit) {
+      callCC([=] (function<Expr<int> (Expr<int>)> exit) {
         return sequence(
           exit(printAndReturn(sum(value1, literal(1)))),
           printAndReturn(sum(value1, literal(2))));
