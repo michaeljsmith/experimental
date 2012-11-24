@@ -59,11 +59,11 @@ inline Expr<int> literal(int value) {
   };
 }
 
-inline Expr<int> let(
-    Expr<int> expression,
-    function<Expr<int> (Expr<int>)> body) {
-  return [=] (function<void (int)> k) {
-    expression([=] (int value) {
+template <typename T, typename F> inline Expr<T> let(
+    Expr<T> expression,
+    F body) {
+  return [=] (function<void (T)> k) {
+    expression([=] (T value) {
       body(literal(value))(k);
     });
   };
