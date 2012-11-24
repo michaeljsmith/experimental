@@ -44,6 +44,15 @@ inline Expression callCC(function<Expression (function<Expression (Expression)>)
   };
 }
 
+auto metaContinuation = function<Expression (Expression)>([] (Expression /*value*/) -> Expression {
+  cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
+  exit(1);
+  });
+
+inline Expression abort(Expression thunk) {
+  return metaContinuation(thunk);
+}
+
 inline Expression literal(int value) {
   return [=] (function<void (int)> k) {
     k(value);
