@@ -88,6 +88,14 @@ template <typename T> inline Expr<T> get(T const& var) {
   };
 }
 
+function<Expr<int> (Expr<int>)> metaContinuation = [] (Expr<int> /*value*/) {
+  return [=] (function<void (int)> /*k*/) {
+    cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
+    //((void (*)())0)();
+    exit(1);
+  };
+  };
+
 template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
   return [=, &var] (function<void (T)> k) {
     value([&var] (V _value) {
@@ -97,13 +105,10 @@ template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
   };
 }
 
-auto metaContinuation = function<Expr<int> (Expr<int>)>([] (Expr<int> /*value*/) -> Expr<int> {
-  cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
-  exit(1);
-  });
-
 inline Expr<int> abort(Expr<int> expression) {
-  return metaContinuation(expression);
+  return [=] (function<void (int)> k) {
+    metaContinuation(expression)(k);
+  };
 }
 
 //(define (*reset thunk)
@@ -141,13 +146,14 @@ inline Expr<int> printAndReturn(Expr<int> expression) {
 
 auto app = 
   let(printAndReturn(literal(5)), function<Expr<int> (Expr<int>)>([=] (Expr<int> value1) {
-    return sequence(
-      callCC([=] (function<Expr<int> (Expr<int>)> exit) {
-        return sequence(
-          exit(printAndReturn(sum(value1, literal(1)))),
-          printAndReturn(sum(value1, literal(2))));
-      }),
-      printAndReturn(sum(value1, literal(3))));
+    return reset(
+      sequence(
+        callCC([=] (function<Expr<int> (Expr<int>)> exit) {
+          return sequence(
+            exit(printAndReturn(sum(value1, literal(1)))),
+            printAndReturn(sum(value1, literal(2))));
+        }),
+        printAndReturn(sum(value1, literal(3)))));
   }));
 
 int main() {
