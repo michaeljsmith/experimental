@@ -44,36 +44,27 @@ inline Expr<int> callCC(function<Expr<int> (function<Expr<int> (Expr<int>)>)> bo
   };
 }
 
-auto metaContinuation = function<Expr<int> (Expr<int>)>([] (Expr<int> /*value*/) -> Expr<int> {
-  cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
-  exit(1);
-  });
-
-inline Expr<int> abort(Expr<int> thunk) {
-  return metaContinuation(thunk);
-}
-
-inline Expr<int> literal(int value) {
-  return [=] (function<void (int)> k) {
+template <typename T> inline Expr<T> literal(T value) {
+  return [=] (function<void (T)> k) {
     k(value);
   };
 }
 
-template <typename T, typename F> inline Expr<T> let(
-    Expr<T> expression,
-    F body) {
+template <typename T, typename V> inline Expr<T> let(
+    Expr<V> expression,
+    function<Expr<T> (Expr<V>)> body) {
   return [=] (function<void (T)> k) {
-    expression([=] (T value) {
+    expression([=] (V value) {
       body(literal(value))(k);
     });
   };
 }
 
-inline Expr<int> sequence(
-    Expr<int> action0,
-    Expr<int> action1) {
-  return [=] (function<void (int)> k) {
-    action0([=] (int) {
+template <typename T, typename T0> inline Expr<T> sequence(
+    Expr<T0> action0,
+    Expr<T> action1) {
+  return [=] (function<void (T)> k) {
+    action0([=] (T0) {
       action1(k);
     });
   };
@@ -91,6 +82,54 @@ inline Expr<int> sum(
   };
 }
 
+template <typename T> inline Expr<T> get(T const& var) {
+  return [&var] (function<void (T)> k) {
+    k(var);
+  };
+}
+
+template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
+  return [=, &var] (function<void (T)> k) {
+    value([&var] (V _value) {
+      var = _value;
+    });
+    k(var);
+  };
+}
+
+auto metaContinuation = function<Expr<int> (Expr<int>)>([] (Expr<int> /*value*/) -> Expr<int> {
+  cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
+  exit(1);
+  });
+
+inline Expr<int> abort(Expr<int> expression) {
+  return metaContinuation(expression);
+}
+
+//(define (*reset thunk)
+//  (let ((mc *meta-continuation*))
+//    (call-with-current-continuation
+//      (lambda (k)
+//        (begin
+//          (set! *meta-continuation*
+//            (lambda (v)
+//              (set! *meta-continuation* mc)
+//              (k v)))
+//          (*abort thunk))))))
+inline Expr<int> reset(Expr<int> expression) {
+  return let(get(metaContinuation), function<Expr<int> (Expr<function<Expr<int> (Expr<int>)>>)>([=] (Expr<function<Expr<int> (Expr<int>)>> mc) {
+    return callCC([=] (function<Expr<int> (Expr<int>)> k) {
+      return sequence(
+        set(metaContinuation, literal([=] (Expr<int> v) -> Expr<int> {
+          return sequence(
+            set(metaContinuation, mc),
+            k(v));
+        })),
+        abort(expression));
+    });
+  }));
+}
+
 inline Expr<int> printAndReturn(Expr<int> expression) {
   return [=] (function<void (int)> k) {
     expression([=] (int value) {
@@ -101,7 +140,7 @@ inline Expr<int> printAndReturn(Expr<int> expression) {
 }
 
 auto app = 
-  let(printAndReturn(literal(5)), [=] (Expr<int> value1) {
+  let(printAndReturn(literal(5)), function<Expr<int> (Expr<int>)>([=] (Expr<int> value1) {
     return sequence(
       callCC([=] (function<Expr<int> (Expr<int>)> exit) {
         return sequence(
@@ -109,7 +148,7 @@ auto app =
           printAndReturn(sum(value1, literal(2))));
       }),
       printAndReturn(sum(value1, literal(3))));
-  });
+  }));
 
 int main() {
   app([=] (int result) {
