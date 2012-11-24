@@ -109,10 +109,10 @@ template <typename T> inline Expr<T> get(T const& var) {
 
 template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
   return [=, &var] (function<void (T)> k) {
-    value([&var] (V _value) {
+    value([=, &var] (V _value) {
       var = _value;
-    });
     k(var);
+    });
   };
 }
 
