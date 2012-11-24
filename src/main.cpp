@@ -82,19 +82,18 @@ inline Expr<int> sum(
   };
 }
 
+function<Expr<int> (Expr<int>)> metaContinuation = [] (Expr<int> /*value*/) {
+  return [=] (function<void (int)> /*k*/) {
+    cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
+    exit(1);
+  };
+  };
+
 template <typename T> inline Expr<T> get(T const& var) {
   return [&var] (function<void (T)> k) {
     k(var);
   };
 }
-
-function<Expr<int> (Expr<int>)> metaContinuation = [] (Expr<int> /*value*/) {
-  return [=] (function<void (int)> /*k*/) {
-    cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
-    //((void (*)())0)();
-    exit(1);
-  };
-  };
 
 template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
   return [=, &var] (function<void (T)> k) {
@@ -133,6 +132,21 @@ inline Expr<int> reset(Expr<int> expression) {
         abort(expression));
     });
   }));
+}
+
+//(define (*shift f)
+// (call-with-current-continuation
+//  (lambda (k)
+//   (*abort (lambda ()
+//            (f (lambda (v)
+//                (reset (k v)))))))))
+inline Expr<int> shift(function<Expr<int> (function<Expr<int> (Expr<int>)>)> body) {
+  return callCC([=] (function<Expr<int> (Expr<int>)> k) {
+    return abort(
+      body([=] (Expr<int> value) {
+        return reset(k(value));
+      }));
+  });
 }
 
 inline Expr<int> printAndReturn(Expr<int> expression) {
