@@ -34,11 +34,13 @@ struct Widget {
 using Expression = function<void (function<void (int)>)>;
 
 //callCC f k = f (\a _ -> k a) k
-inline Expression callCC(function<void (function<void (Expression)>)> body) {
+inline Expression callCC(function<Expression (function<Expression (Expression)>)> body) {
   return [=] (function<void (int)> k) {
-    body([=] (Expression result) {
-      result(k);
-    });
+    body([=] (Expression result) -> Expression {
+      return [=] (function<void (int)> /*ignoredContinuation*/) {
+        result(k);
+      };
+    })(k);
   };
 }
 
@@ -92,8 +94,12 @@ inline Expression printAndReturn(Expression expression) {
 auto app = 
   let(printAndReturn(literal(5)), [=] (Expression value1) {
     return sequence(
-        printAndReturn(sum(value1, literal(1))),
-        printAndReturn(sum(value1, literal(2))));
+      callCC([=] (function<Expression (Expression)> exit) {
+        return sequence(
+          exit(printAndReturn(sum(value1, literal(1)))),
+          printAndReturn(sum(value1, literal(2))));
+      }),
+      printAndReturn(sum(value1, literal(3))));
   });
 
 int main() {
