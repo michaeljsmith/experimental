@@ -31,7 +31,15 @@ struct Widget {
   function<void (int, int)> handleClick;
 };
 
-template <typename T> using Expr = function<void (function<void (T)>)>;
+template <typename T> struct Expr {
+  template <typename F> Expr(F f): fn(f) {}
+
+  void operator()(function<void (T)> k) const {
+    fn(k);
+  }
+
+  function<void (function<void (T)>)> fn;
+};
 
 //callCC f k = f (\a _ -> k a) k
 inline Expr<int> callCC(function<Expr<int> (function<Expr<int> (Expr<int>)>)> body) {
