@@ -117,7 +117,6 @@ template <typename T> inline Expr<T> get(T const& var) {
 template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
   return [=, &var] (function<void (T)> k) {
     value([=, &var] (V _value) {
-      cout << "set(var=" << &var << ", value=" << ")\n";
       var = _value;
       k(var);
     });
@@ -146,14 +145,11 @@ inline Expr<int> reset(Expr<int> expression) {
   return let(get(metaContinuation), function<Expr<int> (Expr<function<Expr<int> (Expr<int>)>>)>([=] (Expr<function<Expr<int> (Expr<int>)>> mc) {
     return callCC([=] (function<Expr<int> (Expr<int>)> k) {
       return sequence(
-        print("replacing metacont\n"),
         set(metaContinuation, literal([=] (Expr<int> v) -> Expr<int> {
           return sequence(
-            print("running replaced metacont\n"),
             set(metaContinuation, mc),
             k(v));
         })),
-        print("reset abort\n"),
         abort(expression));
     });
   }));
@@ -169,9 +165,7 @@ inline Expr<int> shift(function<Expr<int> (function<Expr<int> (Expr<int>)>)> bod
   return callCC([=] (function<Expr<int> (Expr<int>)> k) {
     return abort(
       body([=] (Expr<int> value) {
-        return sequence(
-          print("shift body\n"),
-          reset(k(value)));
+        return reset(k(value));
       }));
   });
 }
@@ -188,16 +182,16 @@ inline Expr<int> printAndReturn(Expr<int> expression) {
 auto app = 
   let(printAndReturn(literal(5)), function<Expr<int> (Expr<int>)>([=] (Expr<int> value1) {
     return reset(
-      sequence(
-        callCC([=] (function<Expr<int> (Expr<int>)> exit) {
-          return sequence(
-            shift([=] (function<Expr<int> (Expr<int>)> k) {
-              return k(literal(1));
-            }),
-            exit(printAndReturn(sum(value1, literal(1)))),
-            printAndReturn(sum(value1, literal(2))));
+      let(
+        shift([=] (function<Expr<int> (Expr<int>)> k) {
+          return k(literal(1));
         }),
-        printAndReturn(sum(value1, literal(3)))));
+        function<Expr<int> (Expr<int>)>([=] (Expr<int> value2) {
+          return sequence(
+            printAndReturn(sum(value2, literal(1))),
+            printAndReturn(sum(value1, literal(2))),
+            printAndReturn(sum(value1, literal(3))));
+        })));
   }));
 
 int main() {
