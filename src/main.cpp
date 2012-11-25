@@ -101,12 +101,15 @@ inline Expr<int> print(char const* text) {
   };
 }
 
-function<Expr<int> (Expr<int>)> metaContinuation = [] (Expr<int> /*value*/) {
-  return [=] (function<void (int)> /*k*/) {
-    cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
-    exit(1);
+template <typename R, typename A> function<Expr<R> (Expr<A>)>& metaContinuation() {
+  static function<Expr<R> (Expr<A>)> value = [] (Expr<A> /*value*/) -> Expr<R> {
+    return [=] (function<void (R)> /*k*/) -> void {
+      cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
+      exit(1);
+    };
   };
-  };
+  return value;
+}
 
 template <typename T> inline Expr<T> get(T const& var) {
   return [&var] (function<void (T)> k) {
@@ -126,7 +129,7 @@ template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
 inline Expr<int> abort(Expr<int> expression) {
   return [=] (function<void (int)> k) {
     expression([=] (int value) {
-      metaContinuation(literal(value))(k);
+      metaContinuation<int, int>()(literal(value))(k);
     });
   };
 }
@@ -142,12 +145,12 @@ inline Expr<int> abort(Expr<int> expression) {
 //              (k v)))
 //          (*abort thunk))))))
 inline Expr<int> reset(Expr<int> expression) {
-  return let(get(metaContinuation), function<Expr<int> (Expr<function<Expr<int> (Expr<int>)>>)>([=] (Expr<function<Expr<int> (Expr<int>)>> mc) {
+  return let(get(metaContinuation<int, int>()), function<Expr<int> (Expr<function<Expr<int> (Expr<int>)>>)>([=] (Expr<function<Expr<int> (Expr<int>)>> mc) {
     return callCC([=] (function<Expr<int> (Expr<int>)> k) {
       return sequence(
-        set(metaContinuation, literal([=] (Expr<int> v) -> Expr<int> {
+        set(metaContinuation<int, int>(), literal([=] (Expr<int> v) -> Expr<int> {
           return sequence(
-            set(metaContinuation, mc),
+            set(metaContinuation<int, int>(), mc),
             k(v));
         })),
         abort(expression));
