@@ -42,9 +42,10 @@ template <typename T> struct Expr {
 };
 
 //callCC f k = f (\a _ -> k a) k
-inline Expr<int> callCC(function<Expr<int> (function<Expr<int> (Expr<int>)>)> body) {
-  return [=] (function<void (int)> k) {
-    body([=] (Expr<int> result) -> Expr<int> {
+template <typename T> inline Expr<T> callCC(
+    function<Expr<int> (function<Expr<int> (Expr<T>)>)> body) {
+  return [=] (function<void (T)> k) {
+    body([=] (Expr<T> result) -> Expr<int> {
       return [=] (function<void (int)> /*ignoredContinuation*/) {
         result(k);
       };
@@ -149,7 +150,7 @@ template <typename T> inline Expr<T> abort(Expr<int> expression) {
 //          (*abort thunk))))))
 inline Expr<int> reset(Expr<int> expression) {
   return let(get(metaContinuation), function<Expr<int> (Expr<function<Expr<int> (Expr<int>)>>)>([=] (Expr<function<Expr<int> (Expr<int>)>> mc) {
-    return callCC([=] (function<Expr<int> (Expr<int>)> k) {
+    return callCC<int>([=] (function<Expr<int> (Expr<int>)> k) {
       return sequence(
         set(metaContinuation, literal([=] (Expr<int> v) -> Expr<int> {
           return sequence(
@@ -168,7 +169,7 @@ inline Expr<int> reset(Expr<int> expression) {
 //            (f (lambda (v)
 //                (reset (k v)))))))))
 inline Expr<int> shift(function<Expr<int> (function<Expr<int> (Expr<int>)>)> body) {
-  return callCC([=] (function<Expr<int> (Expr<int>)> k) {
+  return callCC<int>([=] (function<Expr<int> (Expr<int>)> k) {
     return abort<int>(
       body([=] (Expr<int> value) {
         return reset(k(value));
