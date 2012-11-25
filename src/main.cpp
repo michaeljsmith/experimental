@@ -126,10 +126,16 @@ template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
   };
 }
 
-inline Expr<int> abort(Expr<int> expression) {
-  return [=] (function<void (int)> k) {
+//(define (*abort thunk)
+//  (let ((v (thunk)))
+//    (*meta-continuation* v)))
+template <typename T> inline Expr<T> abort(Expr<int> expression) {
+  return [=] (function<void (T)> /*k*/) {
     expression([=] (int value) {
-      metaContinuation<int, int>()(literal(value))(k);
+      metaContinuation<int, int>()(literal(value))([] (int) {
+        cout << __FILE__ << "(" <<  __LINE__ <<
+          "): metaContinuation returned via original continuation.\n";
+      });
     });
   };
 }
@@ -153,7 +159,7 @@ inline Expr<int> reset(Expr<int> expression) {
             set(metaContinuation<int, int>(), mc),
             k(v));
         })),
-        abort(expression));
+        abort<int>(expression));
     });
   }));
 }
@@ -166,7 +172,7 @@ inline Expr<int> reset(Expr<int> expression) {
 //                (reset (k v)))))))))
 inline Expr<int> shift(function<Expr<int> (function<Expr<int> (Expr<int>)>)> body) {
   return callCC([=] (function<Expr<int> (Expr<int>)> k) {
-    return abort(
+    return abort<int>(
       body([=] (Expr<int> value) {
         return reset(k(value));
       }));
