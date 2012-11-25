@@ -194,22 +194,24 @@ inline Expr<int> printAndReturn(Expr<int> expression) {
   };
 }
 
+auto yieldWidget = shift([=] (function<Expr<Object> (Expr<int>)> k) {
+  return literal([=] (function<void (shared_ptr<Widget>)> yield) {
+    return make_shared<Widget>([=] (int, int) {
+      cout << "handleClick 1\n";
+      k(literal(1))([=] (Object widget) {
+        yield(widget([=] (shared_ptr<Widget> newWidget) {
+          yield(newWidget);
+        }));
+      });
+    });
+  });
+ });
+
 auto app = 
   let(printAndReturn(literal(5)), function<Expr<Object> (Expr<int>)>([=] (Expr<int> value1) {
     return reset(
       let(
-        shift([=] (function<Expr<Object> (Expr<int>)> k) {
-          return literal([=] (function<void (shared_ptr<Widget>)> yield) {
-            return make_shared<Widget>([=] (int, int) {
-              cout << "handleClick 1\n";
-              k(literal(1))([=] (Object widget) {
-                yield(widget([=] (shared_ptr<Widget> newWidget) {
-                  yield(newWidget);
-                }));
-              });
-            });
-          });
-        }),
+        yieldWidget,
         function<Expr<Object> (Expr<int>)>([=] (Expr<int> value2) {
           return sequence(
             printAndReturn(sum(value2, literal(1))),
