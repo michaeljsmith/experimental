@@ -1,8 +1,11 @@
 #include <boost/function.hpp>
+#include <memory>
 #include <array>
 #include <iostream>
 
 using boost::function;
+using std::shared_ptr;
+using std::make_shared;
 using std::cout;
 using std::array;
 
@@ -28,6 +31,7 @@ inline bool pointInBounds(Point point, Bounds bounds) {
 }
 
 struct Widget {
+  Widget(function<void (int, int)> _handleClick): handleClick(_handleClick) {}
   function<void (int, int)> handleClick;
 };
 
@@ -43,10 +47,10 @@ template <typename T> struct Expr {
 
 //callCC f k = f (\a _ -> k a) k
 template <typename T> inline Expr<T> callCC(
-    function<Expr<int> (function<Expr<int> (Expr<T>)>)> body) {
+    function<Expr<T> (function<Expr<shared_ptr<Widget>> (Expr<T>)>)> body) {
   return [=] (function<void (T)> k) {
-    body([=] (Expr<T> result) -> Expr<int> {
-      return [=] (function<void (int)> /*ignoredContinuation*/) {
+    body([=] (Expr<T> result) -> Expr<shared_ptr<Widget>> {
+      return [=] (function<void (shared_ptr<Widget>)> /*ignoredContinuation*/) {
         result(k);
       };
     })(k);
@@ -102,8 +106,8 @@ inline Expr<int> print(char const* text) {
   };
 }
 
-function<Expr<int> (Expr<int>)> metaContinuation = [] (Expr<int> /*value*/) {
-  return [=] (function<void (int)> /*k*/) {
+function<Expr<shared_ptr<Widget>> (Expr<shared_ptr<Widget>>)> metaContinuation = [] (Expr<shared_ptr<Widget>> /*value*/) {
+  return [=] (function<void (shared_ptr<Widget>)> /*k*/) {
     cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
     exit(1);
   };
@@ -127,10 +131,10 @@ template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
 //(define (*abort thunk)
 //  (let ((v (thunk)))
 //    (*meta-continuation* v)))
-template <typename T> inline Expr<T> abort(Expr<int> expression) {
+template <typename T> inline Expr<T> abort(Expr<shared_ptr<Widget>> expression) {
   return [=] (function<void (T)> /*k*/) {
-    expression([=] (int value) {
-      metaContinuation(literal(value))([] (int) {
+    expression([=] (shared_ptr<Widget> value) {
+      metaContinuation(literal(value))([] (shared_ptr<Widget>) {
         cout << __FILE__ << "(" <<  __LINE__ <<
           "): metaContinuation returned via original continuation.\n";
       });
@@ -148,17 +152,19 @@ template <typename T> inline Expr<T> abort(Expr<int> expression) {
 //              (set! *meta-continuation* mc)
 //              (k v)))
 //          (*abort thunk))))))
-inline Expr<int> reset(Expr<int> expression) {
-  return let(get(metaContinuation), function<Expr<int> (Expr<function<Expr<int> (Expr<int>)>>)>([=] (Expr<function<Expr<int> (Expr<int>)>> mc) {
-    return callCC<int>([=] (function<Expr<int> (Expr<int>)> k) {
-      return sequence(
-        set(metaContinuation, literal([=] (Expr<int> v) -> Expr<int> {
-          return sequence(
-            set(metaContinuation, mc),
-            k(v));
-        })),
-        abort<int>(expression));
-    });
+inline Expr<shared_ptr<Widget>> reset(Expr<shared_ptr<Widget>> expression) {
+  return let(get(metaContinuation),
+      function<Expr<shared_ptr<Widget>> (Expr<function<Expr<shared_ptr<Widget>> (Expr<shared_ptr<Widget>>)>>)>(
+        [=] (Expr<function<Expr<shared_ptr<Widget>> (Expr<shared_ptr<Widget>>)>> mc) {
+          return callCC<shared_ptr<Widget>>([=] (function<Expr<shared_ptr<Widget>> (Expr<shared_ptr<Widget>>)> k) {
+            return sequence(
+              set(metaContinuation, literal([=] (Expr<shared_ptr<Widget>> v) -> Expr<shared_ptr<Widget>> {
+                return sequence(
+                  set(metaContinuation, mc),
+                  k(v));
+              })),
+              abort<shared_ptr<Widget>>(expression));
+          });
   }));
 }
 
@@ -168,8 +174,8 @@ inline Expr<int> reset(Expr<int> expression) {
 //   (*abort (lambda ()
 //            (f (lambda (v)
 //                (reset (k v)))))))))
-inline Expr<int> shift(function<Expr<int> (function<Expr<int> (Expr<int>)>)> body) {
-  return callCC<int>([=] (function<Expr<int> (Expr<int>)> k) {
+inline Expr<int> shift(function<Expr<shared_ptr<Widget>> (function<Expr<shared_ptr<Widget>> (Expr<int>)>)> body) {
+  return callCC<int>([=] (function<Expr<shared_ptr<Widget>> (Expr<int>)> k) {
     return abort<int>(
       body([=] (Expr<int> value) {
         return reset(k(value));
@@ -186,24 +192,36 @@ inline Expr<int> printAndReturn(Expr<int> expression) {
   };
 }
 
+shared_ptr<Widget> nextWidget;
+
 auto app = 
-  let(printAndReturn(literal(5)), function<Expr<int> (Expr<int>)>([=] (Expr<int> value1) {
+  let(printAndReturn(literal(5)), function<Expr<shared_ptr<Widget>> (Expr<int>)>([=] (Expr<int> value1) {
     return reset(
       let(
-        shift([=] (function<Expr<int> (Expr<int>)> k) {
-          return k(literal(1));
+        shift([=] (function<Expr<shared_ptr<Widget>> (Expr<int>)> k) {
+          return literal(make_shared<Widget>(function<void (int, int)>([=] (int, int) {
+            cout << "handleClick 1\n";
+            k(literal(1))([=] (shared_ptr<Widget> widget) {
+              nextWidget = widget;
+            });
+          })));
         }),
-        function<Expr<int> (Expr<int>)>([=] (Expr<int> value2) {
+        function<Expr<shared_ptr<Widget>> (Expr<int>)>([=] (Expr<int> value2) {
           return sequence(
             printAndReturn(sum(value2, literal(1))),
             printAndReturn(sum(value1, literal(2))),
-            printAndReturn(sum(value1, literal(3))));
+            printAndReturn(sum(value1, literal(3))),
+            literal(make_shared<Widget>(function<void (int, int)>([=] (int, int) {
+              cout << "final handleClick\n";
+            }))));
         })));
   }));
 
 int main() {
-  app([=] (int result) {
-    exit(result);
+  app([=] (shared_ptr<Widget> widget) {
+    widget->handleClick(5, 5);
+    nextWidget->handleClick(10, 10);
+    exit(0);
   });
 
   return 0;
