@@ -45,12 +45,14 @@ template <typename T> struct Expr {
   function<void (function<void (T)>)> fn;
 };
 
+using Object = function<shared_ptr<Widget> (function<void (shared_ptr<Widget>)>)>;
+
 //callCC f k = f (\a _ -> k a) k
 template <typename T> inline Expr<T> callCC(
-    function<Expr<T> (function<Expr<shared_ptr<Widget>> (Expr<T>)>)> body) {
+    function<Expr<T> (function<Expr<Object> (Expr<T>)>)> body) {
   return [=] (function<void (T)> k) {
-    body([=] (Expr<T> result) -> Expr<shared_ptr<Widget>> {
-      return [=] (function<void (shared_ptr<Widget>)> /*ignoredContinuation*/) {
+    body([=] (Expr<T> result) -> Expr<Object> {
+      return [=] (function<void (Object)> /*ignoredContinuation*/) {
         result(k);
       };
     })(k);
@@ -106,8 +108,8 @@ inline Expr<int> print(char const* text) {
   };
 }
 
-function<Expr<shared_ptr<Widget>> (Expr<shared_ptr<Widget>>)> metaContinuation = [] (Expr<shared_ptr<Widget>> /*value*/) {
-  return [=] (function<void (shared_ptr<Widget>)> /*k*/) {
+function<Expr<Object> (Expr<Object>)> metaContinuation = [] (Expr<Object> /*value*/) {
+  return [=] (function<void (Object)> /*k*/) {
     cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
     exit(1);
   };
@@ -131,10 +133,10 @@ template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
 //(define (*abort thunk)
 //  (let ((v (thunk)))
 //    (*meta-continuation* v)))
-template <typename T> inline Expr<T> abort(Expr<shared_ptr<Widget>> expression) {
+template <typename T> inline Expr<T> abort(Expr<Object> expression) {
   return [=] (function<void (T)> /*k*/) {
-    expression([=] (shared_ptr<Widget> value) {
-      metaContinuation(literal(value))([] (shared_ptr<Widget>) {
+    expression([=] (Object value) {
+      metaContinuation(literal(value))([] (Object) {
         cout << __FILE__ << "(" <<  __LINE__ <<
           "): metaContinuation returned via original continuation.\n";
       });
@@ -152,18 +154,18 @@ template <typename T> inline Expr<T> abort(Expr<shared_ptr<Widget>> expression) 
 //              (set! *meta-continuation* mc)
 //              (k v)))
 //          (*abort thunk))))))
-inline Expr<shared_ptr<Widget>> reset(Expr<shared_ptr<Widget>> expression) {
+inline Expr<Object> reset(Expr<Object> expression) {
   return let(get(metaContinuation),
-      function<Expr<shared_ptr<Widget>> (Expr<function<Expr<shared_ptr<Widget>> (Expr<shared_ptr<Widget>>)>>)>(
-        [=] (Expr<function<Expr<shared_ptr<Widget>> (Expr<shared_ptr<Widget>>)>> mc) {
-          return callCC<shared_ptr<Widget>>([=] (function<Expr<shared_ptr<Widget>> (Expr<shared_ptr<Widget>>)> k) {
+      function<Expr<Object> (Expr<function<Expr<Object> (Expr<Object>)>>)>(
+        [=] (Expr<function<Expr<Object> (Expr<Object>)>> mc) {
+          return callCC<Object>([=] (function<Expr<Object> (Expr<Object>)> k) {
             return sequence(
-              set(metaContinuation, literal([=] (Expr<shared_ptr<Widget>> v) -> Expr<shared_ptr<Widget>> {
+              set(metaContinuation, literal([=] (Expr<Object> v) -> Expr<Object> {
                 return sequence(
                   set(metaContinuation, mc),
                   k(v));
               })),
-              abort<shared_ptr<Widget>>(expression));
+              abort<Object>(expression));
           });
   }));
 }
@@ -174,8 +176,8 @@ inline Expr<shared_ptr<Widget>> reset(Expr<shared_ptr<Widget>> expression) {
 //   (*abort (lambda ()
 //            (f (lambda (v)
 //                (reset (k v)))))))))
-inline Expr<int> shift(function<Expr<shared_ptr<Widget>> (function<Expr<shared_ptr<Widget>> (Expr<int>)>)> body) {
-  return callCC<int>([=] (function<Expr<shared_ptr<Widget>> (Expr<int>)> k) {
+inline Expr<int> shift(function<Expr<Object> (function<Expr<Object> (Expr<int>)>)> body) {
+  return callCC<int>([=] (function<Expr<Object> (Expr<int>)> k) {
     return abort<int>(
       body([=] (Expr<int> value) {
         return reset(k(value));
@@ -192,36 +194,42 @@ inline Expr<int> printAndReturn(Expr<int> expression) {
   };
 }
 
-shared_ptr<Widget> nextWidget;
-
 auto app = 
-  let(printAndReturn(literal(5)), function<Expr<shared_ptr<Widget>> (Expr<int>)>([=] (Expr<int> value1) {
+  let(printAndReturn(literal(5)), function<Expr<Object> (Expr<int>)>([=] (Expr<int> value1) {
     return reset(
       let(
-        shift([=] (function<Expr<shared_ptr<Widget>> (Expr<int>)> k) {
-          return literal(make_shared<Widget>(function<void (int, int)>([=] (int, int) {
-            cout << "handleClick 1\n";
-            k(literal(1))([=] (shared_ptr<Widget> widget) {
-              nextWidget = widget;
-            });
-          })));
+        shift([=] (function<Expr<Object> (Expr<int>)> k) {
+          return literal([=] (function<void (shared_ptr<Widget>)> yield) {
+            return make_shared<Widget>(function<void (int, int)>([=] (int, int) {
+              cout << "handleClick 1\n";
+              k(literal(1))([=] (Object widget) {
+                yield(widget([=] (shared_ptr<Widget> newWidget) {
+                  yield(newWidget);
+                }));
+              });
+            }));
+          });
         }),
-        function<Expr<shared_ptr<Widget>> (Expr<int>)>([=] (Expr<int> value2) {
+        function<Expr<Object> (Expr<int>)>([=] (Expr<int> value2) {
           return sequence(
             printAndReturn(sum(value2, literal(1))),
             printAndReturn(sum(value1, literal(2))),
             printAndReturn(sum(value1, literal(3))),
-            literal(make_shared<Widget>(function<void (int, int)>([=] (int, int) {
-              cout << "final handleClick\n";
-            }))));
+            literal([=] (function<void (shared_ptr<Widget>)> /*yield*/) {
+              return make_shared<Widget>(function<void (int, int)>([=] (int, int) {
+                cout << "final handleClick\n";
+              }));
+            }));
         })));
   }));
 
 int main() {
-  app([=] (shared_ptr<Widget> widget) {
-    widget->handleClick(5, 5);
-    nextWidget->handleClick(10, 10);
-    exit(0);
+  app([=] (Object widget) {
+    shared_ptr<Widget> _widget = widget([=, &_widget] (shared_ptr<Widget> newWidget) {
+      _widget = newWidget;
+    });
+    _widget->handleClick(5, 5);
+    _widget->handleClick(10, 10);
   });
 
   return 0;
