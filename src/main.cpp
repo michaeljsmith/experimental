@@ -101,15 +101,12 @@ inline Expr<int> print(char const* text) {
   };
 }
 
-template <typename R, typename A> function<Expr<R> (Expr<A>)>& metaContinuation() {
-  static function<Expr<R> (Expr<A>)> value = [] (Expr<A> /*value*/) -> Expr<R> {
-    return [=] (function<void (R)> /*k*/) -> void {
-      cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
-      exit(1);
-    };
+function<Expr<int> (Expr<int>)> metaContinuation = [] (Expr<int> /*value*/) {
+  return [=] (function<void (int)> /*k*/) {
+    cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
+    exit(1);
   };
-  return value;
-}
+  };
 
 template <typename T> inline Expr<T> get(T const& var) {
   return [&var] (function<void (T)> k) {
@@ -132,7 +129,7 @@ template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
 template <typename T> inline Expr<T> abort(Expr<int> expression) {
   return [=] (function<void (T)> /*k*/) {
     expression([=] (int value) {
-      metaContinuation<int, int>()(literal(value))([] (int) {
+      metaContinuation(literal(value))([] (int) {
         cout << __FILE__ << "(" <<  __LINE__ <<
           "): metaContinuation returned via original continuation.\n";
       });
@@ -151,12 +148,12 @@ template <typename T> inline Expr<T> abort(Expr<int> expression) {
 //              (k v)))
 //          (*abort thunk))))))
 inline Expr<int> reset(Expr<int> expression) {
-  return let(get(metaContinuation<int, int>()), function<Expr<int> (Expr<function<Expr<int> (Expr<int>)>>)>([=] (Expr<function<Expr<int> (Expr<int>)>> mc) {
+  return let(get(metaContinuation), function<Expr<int> (Expr<function<Expr<int> (Expr<int>)>>)>([=] (Expr<function<Expr<int> (Expr<int>)>> mc) {
     return callCC([=] (function<Expr<int> (Expr<int>)> k) {
       return sequence(
-        set(metaContinuation<int, int>(), literal([=] (Expr<int> v) -> Expr<int> {
+        set(metaContinuation, literal([=] (Expr<int> v) -> Expr<int> {
           return sequence(
-            set(metaContinuation<int, int>(), mc),
+            set(metaContinuation, mc),
             k(v));
         })),
         abort<int>(expression));
