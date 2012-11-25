@@ -200,14 +200,14 @@ auto app =
       let(
         shift([=] (function<Expr<Object> (Expr<int>)> k) {
           return literal([=] (function<void (shared_ptr<Widget>)> yield) {
-            return make_shared<Widget>(function<void (int, int)>([=] (int, int) {
+            return make_shared<Widget>([=] (int, int) {
               cout << "handleClick 1\n";
               k(literal(1))([=] (Object widget) {
                 yield(widget([=] (shared_ptr<Widget> newWidget) {
                   yield(newWidget);
                 }));
               });
-            }));
+            });
           });
         }),
         function<Expr<Object> (Expr<int>)>([=] (Expr<int> value2) {
@@ -216,9 +216,9 @@ auto app =
             printAndReturn(sum(value1, literal(2))),
             printAndReturn(sum(value1, literal(3))),
             literal([=] (function<void (shared_ptr<Widget>)> /*yield*/) {
-              return make_shared<Widget>(function<void (int, int)>([=] (int, int) {
+              return make_shared<Widget>([=] (int, int) {
                 cout << "final handleClick\n";
-              }));
+              });
             }));
         })));
   }));
