@@ -194,18 +194,28 @@ inline Expr<int> printAndReturn(Expr<int> expression) {
   };
 }
 
-auto yieldWidget = shift([=] (function<Expr<Object> (Expr<int>)> k) {
-  return literal([=] (function<void (shared_ptr<Widget>)> yield) {
-    return make_shared<Widget>([=] (int, int) {
-      cout << "handleClick 1\n";
-      k(literal(1))([=] (Object widget) {
-        yield(widget([=] (shared_ptr<Widget> newWidget) {
-          yield(newWidget);
-        }));
-      });
+inline Expr<int> object(function<shared_ptr<Widget> (function<void (Expr<int>)>)> body) {
+  return shift([=] (function<Expr<Object> (Expr<int>)> k) {
+    return literal([=] (function<void (shared_ptr<Widget>)> yield) -> shared_ptr<Widget> {
+      auto continue_ = [=] (Expr<int> value) {
+        k(value)([=] (Object widget) {
+          yield(widget([=] (shared_ptr<Widget> newWidget) {
+            yield(newWidget);
+          }));
+        });
+      };
+      return body(continue_);
     });
   });
- });
+}
+
+auto yieldWidget = object([] (function<void (Expr<int>)> continue_) {
+  return make_shared<Widget>([=] (int, int) {
+    cout << "handleClick 1\n";
+
+    continue_(literal(1));
+  });
+});
 
 auto app = 
   let(printAndReturn(literal(5)), function<Expr<Object> (Expr<int>)>([=] (Expr<int> value1) {
