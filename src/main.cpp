@@ -217,14 +217,22 @@ inline Expr<int> object(function<Expr<shared_ptr<Widget>> (function<Expr<int> (E
   });
 }
 
-auto yieldWidget = object([] (function<Expr<int> (Expr<int>)> continue_) {
+inline Expr<shared_ptr<Widget>> makeSharedWidget(Expr<function<void (int, int)>> handleClick) {
   return [=] (function<void (shared_ptr<Widget>)> k) {
-    k(make_shared<Widget>([=] (int, int) {
+    handleClick([=] (function<void (int, int)> _handleClick) {
+      k(make_shared<Widget>(_handleClick));
+    });
+  };
+}
+
+auto yieldWidget = object([] (function<Expr<int> (Expr<int>)> continue_) {
+  return makeSharedWidget([=] (function<void (function<void (int, int)>)> k) {
+    k([=] (int, int) {
       cout << "handleClick 1\n";
 
       continue_(literal(1))([=] (int) {});
-    }));
-  };
+    });
+  });
  });
 
 auto app = 
