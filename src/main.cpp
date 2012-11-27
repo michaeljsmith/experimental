@@ -225,14 +225,21 @@ inline Expr<shared_ptr<Widget>> makeSharedWidget(Expr<function<void (int, int)>>
   };
 }
 
-auto yieldWidget = object([] (function<Expr<int> (Expr<int>)> continue_) {
-  return makeSharedWidget([=] (function<void (function<void (int, int)>)> k) {
-    k([=] (int, int) {
-      cout << "handleClick 1\n";
-
-      continue_(literal(1))([=] (int) {});
+inline Expr<function<void (int, int)>> lambda(function<Expr<int> (Expr<int> x0, Expr<int> x1)> body) {
+  return [=] (function<void (function<void (int, int)>)> k) {
+    k([=] (int _x0, int _x1) {
+      body(literal(_x0), literal(_x1))([] (int) {});
     });
-  });
+  };
+}
+
+auto yieldWidget = object([] (function<Expr<int> (Expr<int>)> continue_) {
+  return makeSharedWidget(
+    lambda([=] (Expr<int>, Expr<int>) {
+      return sequence(
+        print("handleClick 1\n"),
+        continue_(literal(1)));
+    }));
  });
 
 auto app = 
