@@ -194,14 +194,16 @@ inline Expr<int> printAndReturn(Expr<int> expression) {
   };
 }
 
-inline Expr<int> object(function<shared_ptr<Widget> (function<void (Expr<int>)>)> body) {
+inline Expr<int> object(function<shared_ptr<Widget> (function<Expr<int> (Expr<int>)>)> body) {
   return shift([=] (function<Expr<Object> (Expr<int>)> k) {
     return literal([=] (function<void (shared_ptr<Widget>)> yield) -> shared_ptr<Widget> {
       auto continue_ = [=] (Expr<int> value) {
-        k(value)([=] (Object widget) {
-          yield(widget([=] (shared_ptr<Widget> newWidget) {
-            yield(newWidget);
-          }));
+        return Expr<int>([=] (function<void (int)> /*neverExecuted*/) {
+          k(value)([=] (Object widget) {
+            yield(widget([=] (shared_ptr<Widget> newWidget) {
+              yield(newWidget);
+            }));
+          });
         });
       };
       return body(continue_);
@@ -209,11 +211,11 @@ inline Expr<int> object(function<shared_ptr<Widget> (function<void (Expr<int>)>)
   });
 }
 
-auto yieldWidget = object([] (function<void (Expr<int>)> continue_) {
+auto yieldWidget = object([] (function<Expr<int> (Expr<int>)> continue_) {
   return make_shared<Widget>([=] (int, int) {
     cout << "handleClick 1\n";
 
-    continue_(literal(1));
+    continue_(literal(1))([=] (int) {});
   });
 });
 
