@@ -36,6 +36,9 @@ struct Widget {
 };
 
 template <typename T> struct Expr {
+  typedef T Raw;
+  typedef function<void (Raw)> Continuation;
+
   template <typename F> Expr(F f): fn(f) {}
 
   void operator()(function<void (T)> k) const {
@@ -45,14 +48,16 @@ template <typename T> struct Expr {
   function<void (function<void (T)>)> fn;
 };
 
-using Object = function<shared_ptr<Widget> (function<void (shared_ptr<Widget>)>)>;
+typedef Expr<int> Int;
+
+using Object = Expr<function<shared_ptr<Widget> (function<void (shared_ptr<Widget>)>)>>;
 
 //callCC f k = f (\a _ -> k a) k
 template <typename T> inline Expr<T> callCC(
-    function<Expr<T> (function<Expr<Object> (Expr<T>)>)> body) {
+    function<Expr<T> (function<Object (Expr<T>)>)> body) {
   return [=] (function<void (T)> k) {
-    body([=] (Expr<T> result) -> Expr<Object> {
-      return [=] (function<void (Object)> /*ignoredContinuation*/) {
+    body([=] (Expr<T> result) -> Object {
+      return [=] (Object::Continuation /*ignoredContinuation*/) {
         result(k);
       };
     })(k);
@@ -89,10 +94,10 @@ template <typename T, typename... Rest> auto sequence(Expr<T> head, Rest... rest
   };
 }
 
-inline Expr<int> sum(
-    Expr<int> x0,
-    Expr<int> x1) {
-  return [=] (function<void (int)> k) {
+inline Int sum(
+    Int x0,
+    Int x1) {
+  return [=] (Int::Continuation k) {
     x0([=] (int _x0) {
       x1([=] (int _x1) {
         k(_x0 + _x1);
@@ -101,15 +106,15 @@ inline Expr<int> sum(
   };
 }
 
-inline Expr<int> print(char const* text) {
-  return [=] (function<void (int)> k) {
+inline Int print(char const* text) {
+  return [=] (Int::Continuation k) {
     cout << text;
     k(0);
   };
 }
 
-function<Expr<Object> (Expr<Object>)> metaContinuation = [] (Expr<Object> /*value*/) {
-  return [=] (function<void (Object)> /*k*/) {
+function<Object (Object)> metaContinuation = [] (Object /*value*/) {
+  return [=] (Object::Continuation /*k*/) {
     cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
     exit(1);
   };
@@ -133,10 +138,10 @@ template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
 //(define (*abort thunk)
 //  (let ((v (thunk)))
 //    (*meta-continuation* v)))
-template <typename T> inline Expr<T> abort(Expr<Object> expression) {
+template <typename T> inline Expr<T> abort(Object expression) {
   return [=] (function<void (T)> /*k*/) {
-    expression([=] (Object value) {
-      metaContinuation(literal(value))([] (Object) {
+    expression([=] (Object::Raw value) {
+      metaContinuation(literal(value))([] (Object::Raw) {
         cout << __FILE__ << "(" <<  __LINE__ <<
           "): metaContinuation returned via original continuation.\n";
       });
@@ -154,18 +159,18 @@ template <typename T> inline Expr<T> abort(Expr<Object> expression) {
 //              (set! *meta-continuation* mc)
 //              (k v)))
 //          (*abort thunk))))))
-inline Expr<Object> reset(Expr<Object> expression) {
+inline Object reset(Object expression) {
   return let(get(metaContinuation),
-      function<Expr<Object> (Expr<function<Expr<Object> (Expr<Object>)>>)>(
-        [=] (Expr<function<Expr<Object> (Expr<Object>)>> mc) {
-          return callCC<Object>([=] (function<Expr<Object> (Expr<Object>)> k) {
+      function<Object (Expr<function<Object (Object)>>)>(
+        [=] (Expr<function<Object (Object)>> mc) {
+          return callCC<Object::Raw>([=] (function<Object (Object)> k) {
             return sequence(
-              set(metaContinuation, literal([=] (Expr<Object> v) -> Expr<Object> {
+              set(metaContinuation, literal([=] (Object v) -> Object {
                 return sequence(
                   set(metaContinuation, mc),
                   k(v));
               })),
-              abort<Object>(expression));
+              abort<Object::Raw>(expression));
           });
   }));
 }
@@ -176,17 +181,17 @@ inline Expr<Object> reset(Expr<Object> expression) {
 //   (*abort (lambda ()
 //            (f (lambda (v)
 //                (reset (k v)))))))))
-inline Expr<int> shift(function<Expr<Object> (function<Expr<Object> (Expr<int>)>)> body) {
-  return callCC<int>([=] (function<Expr<Object> (Expr<int>)> k) {
+inline Int shift(function<Object (function<Object (Int)>)> body) {
+  return callCC<int>([=] (function<Object (Int)> k) {
     return abort<int>(
-      body([=] (Expr<int> value) {
+      body([=] (Int value) {
         return reset(k(value));
       }));
   });
 }
 
-inline Expr<int> printAndReturn(Expr<int> expression) {
-  return [=] (function<void (int)> k) {
+inline Int printAndReturn(Int expression) {
+  return [=] (Int::Continuation k) {
     expression([=] (int value) {
       cout << "printAndReturn " << value << "\n";
       k(value);
@@ -194,12 +199,12 @@ inline Expr<int> printAndReturn(Expr<int> expression) {
   };
 }
 
-inline Expr<int> object(function<Expr<shared_ptr<Widget>> (function<Expr<int> (Expr<int>)>)> body) {
-  return shift([=] (function<Expr<Object> (Expr<int>)> k) {
+inline Int object(function<Expr<shared_ptr<Widget>> (function<Int (Int)>)> body) {
+  return shift([=] (function<Object (Int)> k) {
     return literal([=] (function<void (shared_ptr<Widget>)> yield) -> shared_ptr<Widget> {
-      auto continue_ = [=] (Expr<int> value) {
-        return Expr<int>([=] (function<void (int)> /*neverExecuted*/) {
-          k(value)([=] (Object widget) {
+      auto continue_ = [=] (Int value) {
+        return Int([=] (Int::Continuation /*neverExecuted*/) {
+          k(value)([=] (Object::Raw widget) {
             yield(widget([=] (shared_ptr<Widget> newWidget) {
               yield(newWidget);
             }));
@@ -225,7 +230,7 @@ inline Expr<shared_ptr<Widget>> makeSharedWidget(Expr<function<void (int, int)>>
   };
 }
 
-inline Expr<function<void (int, int)>> lambda(function<Expr<int> (Expr<int> x0, Expr<int> x1)> body) {
+inline Expr<function<void (int, int)>> lambda(function<Int (Int x0, Int x1)> body) {
   return [=] (function<void (function<void (int, int)>)> k) {
     k([=] (int _x0, int _x1) {
       body(literal(_x0), literal(_x1))([] (int) {});
@@ -233,21 +238,21 @@ inline Expr<function<void (int, int)>> lambda(function<Expr<int> (Expr<int> x0, 
   };
 }
 
-auto yieldWidget = object([] (function<Expr<int> (Expr<int>)> continue_) {
+auto yieldWidget = object([] (function<Int (Int)> continue_) {
   return makeSharedWidget(
-    lambda([=] (Expr<int>, Expr<int>) {
+    lambda([=] (Int, Int) {
       return sequence(
         print("handleClick 1\n"),
         continue_(literal(1)));
     }));
  });
 
-auto app = 
-  let(printAndReturn(literal(5)), function<Expr<Object> (Expr<int>)>([=] (Expr<int> value1) {
+auto app =
+  let(printAndReturn(literal(5)), function<Object (Int)>([=] (Int value1) {
     return reset(
       let(
         yieldWidget,
-        function<Expr<Object> (Expr<int>)>([=] (Expr<int> value2) {
+        function<Object (Int)>([=] (Int value2) {
           return sequence(
             printAndReturn(sum(value2, literal(1))),
             printAndReturn(sum(value1, literal(2))),
@@ -261,7 +266,7 @@ auto app =
   }));
 
 int main() {
-  app([=] (Object widget) {
+  app([=] (Object::Raw widget) {
     shared_ptr<Widget> _widget = widget([=, &_widget] (shared_ptr<Widget> newWidget) {
       _widget = newWidget;
     });
