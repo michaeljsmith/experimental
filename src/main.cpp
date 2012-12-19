@@ -53,10 +53,9 @@ typedef Expr<int> Int;
 using Object = Expr<function<shared_ptr<Widget> (function<void (shared_ptr<Widget>)>)>>;
 
 //callCC f k = f (\a _ -> k a) k
-template <typename T> inline Expr<T> callCC(
-    function<Expr<T> (function<Object (Expr<T>)>)> body) {
-  return [=] (function<void (T)> k) {
-    body([=] (Expr<T> result) -> Object {
+template <typename T> inline T callCC(function<T (function<Object (T)>)> body) {
+  return [=] (typename T::Continuation k) {
+    body([=] (T result) -> Object {
       return [=] (Object::Continuation /*ignoredContinuation*/) {
         result(k);
       };
@@ -163,7 +162,7 @@ inline Object reset(Object expression) {
   return let(get(metaContinuation),
       function<Object (Expr<function<Object (Object)>>)>(
         [=] (Expr<function<Object (Object)>> mc) {
-          return callCC<Object::Raw>([=] (function<Object (Object)> k) {
+          return callCC<Object>([=] (function<Object (Object)> k) {
             return sequence(
               set(metaContinuation, literal([=] (Object v) -> Object {
                 return sequence(
@@ -182,7 +181,7 @@ inline Object reset(Object expression) {
 //            (f (lambda (v)
 //                (reset (k v)))))))))
 inline Int shift(function<Object (function<Object (Int)>)> body) {
-  return callCC<int>([=] (function<Object (Int)> k) {
+  return callCC<Int>([=] (function<Object (Int)> k) {
     return abort<int>(
       body([=] (Int value) {
         return reset(k(value));
