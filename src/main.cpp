@@ -69,14 +69,20 @@ template <typename T> inline Expr<T> literal(T value) {
   };
 }
 
-template <typename T, typename V> inline Expr<T> let(
-    Expr<V> expression,
-    function<Expr<T> (Expr<V>)> body) {
-  return [=] (function<void (T)> k) {
-    expression([=] (V value) {
-      body(literal(value))(k);
-    });
-  };
+namespace detail {
+  template <typename T, typename V> inline T letHelper(
+      V expression,
+      function<T (V)> body) {
+    return [=] (typename T::Continuation k) {
+      expression([=] (typename V::Raw value) {
+        body(literal(value))(k);
+      });
+    };
+  }
+}
+
+template <typename X0, typename X1> inline auto let(X0 expression, X1 body) -> decltype(body(expression)) {
+  return detail::letHelper(expression, function<decltype(body(expression)) (X0)>(body));
 }
 
 template <typename T> inline T valueNull(Expr<T>) {exit(1);}
@@ -159,19 +165,17 @@ template <typename T> inline Expr<T> abort(Object expression) {
 //              (k v)))
 //          (*abort thunk))))))
 inline Object reset(Object expression) {
-  return let(get(metaContinuation),
-      function<Object (Expr<function<Object (Object)>>)>(
-        [=] (Expr<function<Object (Object)>> mc) {
-          return callCC<Object>([=] (function<Object (Object)> k) {
+  return let(get(metaContinuation), [=] (Expr<function<Object (Object)>> mc) {
+    return callCC<Object>([=] (function<Object (Object)> k) {
+      return sequence(
+          set(metaContinuation, literal([=] (Object v) -> Object {
             return sequence(
-              set(metaContinuation, literal([=] (Object v) -> Object {
-                return sequence(
-                  set(metaContinuation, mc),
-                  k(v));
-              })),
-              abort<Object::Raw>(expression));
-          });
-  }));
+                set(metaContinuation, mc),
+                k(v));
+          })),
+          abort<Object::Raw>(expression));
+    });
+  });
 }
 
 //(define (*shift f)
@@ -247,12 +251,10 @@ auto yieldWidget = object([] (function<Int (Int)> continue_) {
  });
 
 auto app =
-  let(printAndReturn(literal(5)), function<Object (Int)>([=] (Int value1) {
+  let(printAndReturn(literal(5)), [=] (Int value1) {
     return reset(
-      let(
-        yieldWidget,
-        function<Object (Int)>([=] (Int value2) {
-          return sequence(
+      let(yieldWidget, [=] (Int value2) {
+        return sequence(
             printAndReturn(sum(value2, literal(1))),
             printAndReturn(sum(value1, literal(2))),
             printAndReturn(sum(value1, literal(3))),
@@ -261,8 +263,8 @@ auto app =
                 cout << "final handleClick\n";
               });
             }));
-        })));
-  }));
+      }));
+  });
 
 int main() {
   app([=] (Object::Raw widget) {
