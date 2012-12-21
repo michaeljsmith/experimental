@@ -202,14 +202,14 @@ inline Int printAndReturn(Int expression) {
   };
 }
 
-inline Int object(function<Expr<shared_ptr<Widget>> (function<Int (Int)>)> body) {
+inline Int yield(function<Expr<shared_ptr<Widget>> (function<Int (Int)>)> body) {
   return shift([=] (function<Object (Int)> k) {
-    return literal([=] (function<void (shared_ptr<Widget>)> yield) -> shared_ptr<Widget> {
+    return literal([=] (function<void (shared_ptr<Widget>)> yield2) -> shared_ptr<Widget> {
       auto continue_ = [=] (Int value) {
         return Int([=] (Int::Continuation /*neverExecuted*/) {
           k(value)([=] (Object::Raw widget) {
-            yield(widget([=] (shared_ptr<Widget> newWidget) {
-              yield(newWidget);
+            yield2(widget([=] (shared_ptr<Widget> newWidget) {
+              yield2(newWidget);
             }));
           });
         });
@@ -253,7 +253,7 @@ inline Expr<function<void (int, int)>> lambda(function<Int (Int x0, Int x1)> bod
 }
 
 inline Int yieldWidget(std::string message) {
-  return object([=] (function<Int (Int)> continue_) {
+  return yield([=] (function<Int (Int)> continue_) {
     return makeSharedWidget(
         lambda([=] (Int, Int) {
           return sequence(
