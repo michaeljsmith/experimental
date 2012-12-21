@@ -111,7 +111,7 @@ inline Int sum(
   };
 }
 
-inline Int print(char const* text) {
+inline Int print(std::string text) {
   return [=] (Int::Continuation k) {
     cout << text;
     k(0);
@@ -241,23 +241,26 @@ inline Expr<function<void (int, int)>> lambda(function<Int (Int x0, Int x1)> bod
   };
 }
 
-auto yieldWidget = object([] (function<Int (Int)> continue_) {
-  return makeSharedWidget(
-    lambda([=] (Int, Int) {
-      return sequence(
-        print("handleClick 1\n"),
-        continue_(literal(1)));
-    }));
- });
+inline Int yieldWidget(std::string message) {
+  return object([=] (function<Int (Int)> continue_) {
+    return makeSharedWidget(
+        lambda([=] (Int, Int) {
+          return sequence(
+              print(message),
+              continue_(literal(1)));
+        }));
+  });
+}
 
 auto app =
   let(printAndReturn(literal(5)), [=] (Int value1) {
     return reset(
-      let(yieldWidget, [=] (Int value2) {
+      let(yieldWidget("handleClick 1\n"), [=] (Int value2) {
         return sequence(
             printAndReturn(sum(value2, literal(1))),
             printAndReturn(sum(value1, literal(2))),
             printAndReturn(sum(value1, literal(3))),
+            yieldWidget("final handleClick\n"),
             literal([=] (function<void (shared_ptr<Widget>)> /*yield*/) {
               return make_shared<Widget>([=] (int, int) {
                 cout << "final handleClick\n";
