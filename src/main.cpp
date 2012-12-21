@@ -225,6 +225,17 @@ inline Int object(function<Expr<shared_ptr<Widget>> (function<Int (Int)>)> body)
   });
 }
 
+inline Object proc(Int body) {
+  return reset(
+      sequence(
+          body,
+          literal([=] (function<void (shared_ptr<Widget>)> /*yield*/) {
+            return make_shared<Widget>([=] (int, int) {
+              cout << "final handleClick\n";
+            });
+          })));
+}
+
 inline Expr<shared_ptr<Widget>> makeSharedWidget(Expr<function<void (int, int)>> handleClick) {
   return [=] (function<void (shared_ptr<Widget>)> k) {
     handleClick([=] (function<void (int, int)> _handleClick) {
@@ -254,19 +265,14 @@ inline Int yieldWidget(std::string message) {
 
 auto app =
   let(printAndReturn(literal(5)), [=] (Int value1) {
-    return reset(
-      let(yieldWidget("handleClick 1\n"), [=] (Int value2) {
-        return sequence(
-            printAndReturn(sum(value2, literal(1))),
-            printAndReturn(sum(value1, literal(2))),
-            printAndReturn(sum(value1, literal(3))),
-            yieldWidget("final handleClick\n"),
-            literal([=] (function<void (shared_ptr<Widget>)> /*yield*/) {
-              return make_shared<Widget>([=] (int, int) {
-                cout << "final handleClick\n";
-              });
-            }));
-      }));
+    return proc(
+        let(yieldWidget("handleClick 1\n"), [=] (Int value2) {
+          return sequence(
+              printAndReturn(sum(value2, literal(1))),
+              printAndReturn(sum(value1, literal(2))),
+              printAndReturn(sum(value1, literal(3))),
+              yieldWidget("final handleClick\n"));
+        }));
   });
 
 int main() {
