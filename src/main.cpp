@@ -31,6 +31,7 @@ inline bool pointInBounds(Point point, Bounds bounds) {
 }
 
 struct Widget {
+  Widget() {}
   Widget(function<void (int, int)> _handleClick): handleClick(_handleClick) {}
   function<void (int, int)> handleClick;
 };
@@ -50,7 +51,7 @@ template <typename T> struct Expr {
 
 typedef Expr<int> Int;
 
-using Object = Expr<function<shared_ptr<Widget> (function<void (shared_ptr<Widget>)>)>>;
+using Object = Expr<function<Widget (function<void (Widget const&)>)>>;
 
 //callCC f k = f (\a _ -> k a) k
 template <typename T> inline T callCC(function<T (function<Object (T)>)> body) {
@@ -202,21 +203,21 @@ inline Int printAndReturn(Int expression) {
   };
 }
 
-inline Int yield(function<Expr<shared_ptr<Widget>> (function<Int (Int)>)> body) {
+inline Int yield(function<Expr<Widget> (function<Int (Int)>)> body) {
   return shift([=] (function<Object (Int)> k) {
-    return literal([=] (function<void (shared_ptr<Widget>)> yield2) -> shared_ptr<Widget> {
+    return literal([=] (function<void (Widget const&)> yield2) -> Widget {
       auto continue_ = [=] (Int value) {
         return Int([=] (Int::Continuation /*neverExecuted*/) {
           k(value)([=] (Object::Raw widget) {
-            yield2(widget([=] (shared_ptr<Widget> newWidget) {
+            yield2(widget([=] (Widget const& newWidget) {
               yield2(newWidget);
             }));
           });
         });
       };
 
-      shared_ptr<Widget> result;
-      body(continue_)([&result] (shared_ptr<Widget> widget) {
+      Widget result;
+      body(continue_)([&result] (Widget widget) {
         result = widget;
       });
 
@@ -225,21 +226,31 @@ inline Int yield(function<Expr<shared_ptr<Widget>> (function<Int (Int)>)> body) 
   });
 }
 
-inline Object proc(Int body) {
-  return reset(
-      sequence(
+inline Expr<shared_ptr<Widget>> proc(Int body) {
+  return [=] (function<void (shared_ptr<Widget>)> k) {
+    return reset(
+        sequence(
           body,
-          literal([=] (function<void (shared_ptr<Widget>)> /*yield*/) {
-            return make_shared<Widget>([=] (int, int) {
+          literal([=] (function<void (Widget)> /*yield*/) {
+            return Widget([=] (int, int) {
               cout << "final handleClick\n";
+              ((void (*)())0)();
+              });
+            })))([=] (Object::Raw object) {
+              shared_ptr<Widget> widget = make_shared<Widget>();
+              *widget = object([=, &widget] (Widget newWidget) {
+                *widget = newWidget;
+              });
+              k(widget);
             });
-          })));
+  };
 }
 
-inline Expr<shared_ptr<Widget>> makeSharedWidget(Expr<function<void (int, int)>> handleClick) {
-  return [=] (function<void (shared_ptr<Widget>)> k) {
+// TODO: Replace with call to construct().
+inline Expr<Widget> makeWidget(Expr<function<void (int, int)>> handleClick) {
+  return [=] (function<void (Widget const&)> k) {
     handleClick([=] (function<void (int, int)> _handleClick) {
-      k(make_shared<Widget>(_handleClick));
+      k(Widget(_handleClick));
     });
   };
 }
@@ -254,7 +265,7 @@ inline Expr<function<void (int, int)>> lambda(function<Int (Int x0, Int x1)> bod
 
 inline Int yieldWidget(std::string message) {
   return yield([=] (function<Int (Int)> continue_) {
-    return makeSharedWidget(
+    return makeWidget(
         lambda([=] (Int, Int) {
           return sequence(
               print(message),
@@ -276,12 +287,9 @@ auto app =
   });
 
 int main() {
-  app([=] (Object::Raw widget) {
-    shared_ptr<Widget> _widget = widget([=, &_widget] (shared_ptr<Widget> newWidget) {
-      _widget = newWidget;
-    });
-    _widget->handleClick(5, 5);
-    _widget->handleClick(10, 10);
+  app([=] (shared_ptr<Widget> widget) {
+    widget->handleClick(5, 5);
+    widget->handleClick(10, 10);
   });
 
   return 0;
