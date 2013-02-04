@@ -1,296 +1,321 @@
-#include <boost/function.hpp>
-#include <memory>
-#include <array>
 #include <iostream>
+#include <functional>
+#include <memory>
+#include <vector>
 
-using boost::function;
-using std::shared_ptr;
-using std::make_shared;
-using std::cout;
-using std::array;
+using namespace std;
 
-using Bound = int;
-using AxisBounds = array<Bound, 2>;
-using Bounds = array<AxisBounds, 2>;
+template <typename T> struct Expression {
+  using Continuation = function<void (T)>;
 
-using Position = int;
-using Point = array<Position, 2>;
-
-inline bool positionInAxisBounds(Position position, AxisBounds axisBounds) {
-  return position >= axisBounds[0] &&
-    position < axisBounds[1];
-}
-
-inline bool pointInBounds(Point point, Bounds bounds) {
-  for (size_t axis = 0; axis < 2; ++axis) {
-    if (!positionInAxisBounds(point[axis], bounds[axis])) {
-      return false;
-    }
-  }
-  return true;
-}
-
-struct Widget {
-  Widget() {}
-  Widget(function<void (int, int)> _handleClick): handleClick(_handleClick) {}
-  function<void (int, int)> handleClick;
-};
-
-template <typename T> struct Expr {
-  typedef T Raw;
-  typedef function<void (Raw)> Continuation;
-
-  template <typename F> Expr(F f): fn(f) {}
-
-  void operator()(function<void (T)> k) const {
+  void operator()(Continuation k) const {
     fn(k);
   }
-
-  function<void (function<void (T)>)> fn;
 };
 
-typedef Expr<int> Int;
+template <> struct Expression<void> {
+  using Continuation = function<void ()>;
+  using Function = function<void (Continuation)>;
 
-using Object = Expr<function<Widget (function<void (Widget const&)>)>>;
+  Function fn;
 
-//callCC f k = f (\a _ -> k a) k
-template <typename T> inline T callCC(function<T (function<Object (T)>)> body) {
-  return [=] (typename T::Continuation k) {
-    body([=] (T result) -> Object {
-      return [=] (Object::Continuation /*ignoredContinuation*/) {
-        result(k);
-      };
-    })(k);
-  };
-}
+  template <typename F> Expression(F const& fn_): fn(fn_) {}
 
-template <typename T> inline Expr<T> literal(T value) {
-  return [=] (function<void (T)> k) {
+  void operator()(Continuation k) {
+    fn(k);
+  }
+};
+
+template <typename T> Expression<T> literal(T const& value) {
+  return [=] (typename Expression<T>::Continuation k) {
     k(value);
   };
 }
 
-namespace detail {
-  template <typename T, typename V> inline T letHelper(
-      V expression,
-      function<T (V)> body) {
-    return [=] (typename T::Continuation k) {
-      expression([=] (typename V::Raw value) {
-        body(literal(value))(k);
-      });
+inline Expression<string> operator"" _x(const char* str, size_t /*sz*/) {
+  return literal(string(str));
+}
+
+inline Expression<void> print(Expression<string> value) {
+  return [=] (Expression<void>::Continuation k) {
+    auto cont = [] (string x) {
+      cout << x;
     };
+    value(cont);
+    k();
+  };
+}
+
+template <typename T> struct Value {
+};
+
+template <typename DX, typename DY, typename T> struct Layoutable {
+};
+
+template <typename T> struct Layout {};
+
+template <typename DX, typename DY, typename T> Layoutable<DX, DY, T> layoutable(
+    function<Layout<T> (typename DX::Type dimX, typename DY::Type dimY)> fn) {
+  return Layoutable<DX, DY, T>(fn);
+}
+
+namespace layoutDimensions {
+  struct Fixed {
+    using Type = Value<float>;
+  };
+
+  struct Dimension {
+    Dimension(Value<float> pos_, Value<float> size_): pos(pos_), size(size_) {}
+
+    Value<float> pos;
+    Value<float> size;
+  };
+
+  inline Dimension dimension(Value<float> pos, Value<float> size) {
+    return Dimension(pos, size);
+  }
+
+  struct Expandable {
+    using Type = Dimension;
+  };
+
+  inline Value<float>& pos(Dimension& dim) {
+    return dim.pos;
+  }
+
+  inline Value<float>& size(Dimension& dim) {
+    return dim.size;
   }
 }
 
-template <typename X0, typename X1> inline auto let(X0 expression, X1 body) -> decltype(body(expression)) {
-  return detail::letHelper(expression, function<decltype(body(expression)) (X0)>(body));
+template <typename T> Layout<T> layout(
+    layoutDimensions::Dimension dimX,
+    layoutDimensions::Dimension dimY,
+    shared_ptr<T> uiElement) {
+  return Layout<T>(dimX, dimY, uiElement);
 }
 
-template <typename T> inline T valueNull(Expr<T>) {exit(1);}
+template <typename T> Layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed, T> overlay(
+    Layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed, T> fixed,
+    Layoutable<layoutDimensions::Expandable, layoutDimensions::Expandable, T> expandable) {
+  struct OverlayObject : T {
+    shared_ptr<T> fixed;
+    shared_ptr<T> expandable;
+  };
 
-template <typename T> Expr<T> sequence(Expr<T> expr) {
-  return expr;
+  return layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed>(
+      function<Layout<shared_ptr<T>> (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY)>(
+          [=] (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY) -> Layout<shared_ptr<T>> {
+            auto fixedWidget = performLayout(fixed, dimX, dimY);
+            auto expandableWidget = performLayout(expandable, layoutDimX(fixedWidget), layoutDimY(fixedWidget));
+
+            return layout(
+                layoutDimX(fixedWidget), layoutDimY(fixedWidget),
+                shared_ptr<T>(make_shared<OverlayObject>(fixedWidget, expandableWidget)));
+          }));
 }
 
-template <typename T, typename... Rest> auto sequence(Expr<T> head, Rest... rest) -> decltype(sequence(rest...)) {
-  return [=] (function<void (decltype(valueNull(sequence(rest...))))> k) {
-    head([=] (T) {
-      sequence(rest...)(k);
-    });
-  };
+template <typename T> Layout<T> verticalRecurse(
+    layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY,
+    Layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed, T> last) {
+  return performLayout(last, dimX, dimY);
 }
 
-inline Int sum(
-    Int x0,
-    Int x1) {
-  return [=] (Int::Continuation k) {
-    x0([=] (int _x0) {
-      x1([=] (int _x1) {
-        k(_x0 + _x1);
-      });
-    });
+template <typename T, typename... Tail> Layout<T> verticalRecurse(
+    layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY,
+    Layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed, T> head,
+    Tail... tail) {
+  struct Pair : T {
+    shared_ptr<T> head;
   };
+
+  auto headWidget = performLayout(head, dimX, dimY);
+  auto tailWidget = verticalRecurse(dimX, dimY + sizeY(headWidget), tail...);
+
+  return layout(
+      layoutDimX(headWidget), // TODO: Max.
+      layoutDimensions::dimension(dimY, sizeY(headWidget), sizeY(tailWidget)),
+      shared_ptr<T>(make_shared<Pair>(headWidget, tailWidget)));
 }
 
-inline Int print(std::string text) {
-  return [=] (Int::Continuation k) {
-    cout << text;
-    k(0);
-  };
+template <typename T, typename... Args> Layoutable<T, layoutDimensions::Fixed, layoutDimensions::Fixed>
+  vertical(Layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed, T> head, Args... args) {
+  return layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed>(
+      function<Layout<shared_ptr<T>> (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY)>(
+          [=] (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY) -> Layout<shared_ptr<T>> {
+            return verticalRecurse(dimX, dimY, head, args...);
+          }));
 }
 
-function<Object (Object)> metaContinuation = [] (Object /*value*/) {
-  return [=] (Object::Continuation /*k*/) {
-    cout << __FILE__ << "(" <<  __LINE__ << "): Missing top-level reset\n";
-    exit(1);
-  };
+struct Widget_ {
+  virtual ~Widget_() {}
+};
+
+template <typename DX, typename DY> using Widget = Layoutable<DX, DY, Widget_>;
+
+struct UiManager {
+  struct Element : enable_shared_from_this<Element> {
+    UiManager& manager;
+    Value<float> x;
+    Value<float> y;
+
+    Element(UiManager& manager_, Value<float> x_, Value<float> y_):
+      manager(manager_), x(x_), y(y_) {}
+
+    virtual ~Element() {
+      manager.removeElement(shared_from_this());
+    }
+
+    Value<float> getX() {
+      return x;
+    }
+
+    Value<float> getY() {
+      return y;
+    }
   };
 
-template <typename T> inline Expr<T> get(T const& var) {
-  return [&var] (function<void (T)> k) {
-    k(var);
+  using ElementHandle = shared_ptr<Element>;
+
+  vector<ElementHandle> elements;
+
+  struct TextElement : Element {
   };
+
+  ElementHandle makeTextElement(string text, Value<float> posX, Value<float> posY) {
+    auto element = make_shared<TextElement>(*this, text, posX, posY);
+    elements.push_back(element);
+    return element;
+  }
+
+ private:
+  void removeElement(ElementHandle /*element*/) {
+    ((void (*)())0)();
+  }
+};
+
+UiManager uiManager;
+
+using UiElement = UiManager::Element;
+using UiElementHandle = UiManager::ElementHandle;
+
+inline Value<float> sizeX(UiElementHandle element) {
+  return element->getX();
 }
 
-template <typename T, typename V> inline Expr<T> set(T& var, Expr<V> value) {
-  return [=, &var] (function<void (T)> k) {
-    value([=, &var] (V _value) {
-      var = _value;
-      k(var);
-    });
-  };
+inline Value<float> sizeY(UiElementHandle element) {
+  return element->getY();
 }
 
-//(define (*abort thunk)
-//  (let ((v (thunk)))
-//    (*meta-continuation* v)))
-template <typename T> inline Expr<T> abort(Object expression) {
-  return [=] (function<void (T)> /*k*/) {
-    expression([=] (Object::Raw value) {
-      metaContinuation(literal(value))([] (Object::Raw) {
-        cout << __FILE__ << "(" <<  __LINE__ <<
-          "): metaContinuation returned via original continuation.\n";
-      });
-    });
-  };
+//auto makeUiTextElement = bind(&UiManager::makeTextElement, uiManager);
+inline UiElementHandle makeUiTextElement(string text, Value<float> posX, Value<float> posY) {
+  return uiManager.makeTextElement(text, posX, posY);
 }
 
-//(define (*reset thunk)
-//  (let ((mc *meta-continuation*))
-//    (call-with-current-continuation
-//      (lambda (k)
-//        (begin
-//          (set! *meta-continuation*
-//            (lambda (v)
-//              (set! *meta-continuation* mc)
-//              (k v)))
-//          (*abort thunk))))))
-inline Object reset(Object expression) {
-  return let(get(metaContinuation), [=] (Expr<function<Object (Object)>> mc) {
-    return callCC<Object>([=] (function<Object (Object)> k) {
-      return sequence(
-          set(metaContinuation, literal([=] (Object v) -> Object {
-            return sequence(
-                set(metaContinuation, mc),
-                k(v));
-          })),
-          abort<Object::Raw>(expression));
-    });
+struct TouchManager {
+  struct Element : enable_shared_from_this<Element> {
+    TouchManager& manager;
+    Value<float> x;
+    Value<float> w;
+    Value<float> y;
+    Value<float> h;
+
+    Element(TouchManager& manager_, Value<float> x_, Value<float> w_, Value<float> y_, Value<float> h_):
+      manager(manager_), x(x_), w(w_), y(y_), h(h_) {}
+
+    virtual ~Element() {
+      manager.removeElement(shared_from_this());
+    }
+
+    Value<float> getX() {
+      return x;
+    }
+
+    Value<float> getY() {
+      return y;
+    }
+  };
+
+  using ElementHandle = shared_ptr<Element>;
+
+  vector<ElementHandle> elements;
+
+  ElementHandle makeElement(Expression<void> action, Value<float> posX, Value<float> width, Value<float> posY, Value<float> height) {
+    auto element = make_shared<Element>(*this, action, posX, width, posY, height);
+    elements.push_back(element);
+    return element;
+  }
+
+ private:
+  void removeElement(ElementHandle /*element*/) {
+    ((void (*)())0)();
+  }
+};
+
+TouchManager touchManager;
+
+using TouchElement = TouchManager::Element;
+using TouchElementHandle = TouchManager::ElementHandle;
+
+//auto makeTouchTextElement = bind(&TouchManager::makeTextElement, uiManager);
+inline TouchElementHandle makeTouchElement(Expression<void> action, Value<float> posX, Value<float> width, Value<float> posY, Value<float> height) {
+  return touchManager.makeElement(action, posX, width, posY, height);
+}
+
+inline Widget<layoutDimensions::Fixed, layoutDimensions::Fixed> label(string caption) {
+  struct LabelWidget : Widget_ {
+    UiElementHandle uiElement;
+  };
+
+  return layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed>(
+      function<Layout<Widget_> (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY)>(
+          [=] (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY) -> Layout<Widget_> {
+            auto uiElement = makeUiTextElement(caption, dimX, dimY);
+            return layout(
+                layoutDimensions::dimension(dimX, sizeX(uiElement)),
+                layoutDimensions::dimension(dimY, sizeY(uiElement)),
+                shared_ptr<Widget_>(make_shared<LabelWidget>(uiElement)));
+          }));
+}
+
+inline Widget<layoutDimensions::Expandable, layoutDimensions::Expandable> hotRegion(Expression<void> action) {
+  struct HotRegionWidget : Widget_ {
+    TouchElement touchElement;
+  };
+
+  return layoutable<layoutDimensions::Expandable, layoutDimensions::Expandable>(
+      function<Layout<Widget_> (layoutDimensions::Expandable::Type dimX, layoutDimensions::Expandable::Type dimY)>(
+          [=] (layoutDimensions::Expandable::Type dimX, layoutDimensions::Expandable::Type dimY) -> Layout<Widget_> {
+            auto touchElement = makeTouchElement(action, pos(dimX), size(dimX), pos(dimY), size(dimY));
+            return layout(
+                dimX, dimY, shared_ptr<Widget_>(make_shared<HotRegionWidget>(touchElement)));
+          }));
+}
+
+inline Widget<layoutDimensions::Fixed, layoutDimensions::Fixed> button(string caption, Expression<void> action) {
+  return overlay(label(caption), hotRegion(action));
+}
+
+auto newGame = print("Starting new game.\n"_x);
+auto foo = print("Setting foo.\n"_x);
+
+inline Expression<void> optionsMenu(Expression<void> back) {
+  return menu([=] (function<Expression<void> (Expression<void>)> exitMenu) {
+    return vertical(
+      button("Back", exitMenu(back)),
+      button("Foo", foo));
   });
 }
 
-//(define (*shift f)
-// (call-with-current-continuation
-//  (lambda (k)
-//   (*abort (lambda ()
-//            (f (lambda (v)
-//                (reset (k v)))))))))
-inline Int shift(function<Object (function<Object (Int)>)> body) {
-  return callCC<Int>([=] (function<Object (Int)> k) {
-    return abort<int>(
-      body([=] (Int value) {
-        return reset(k(value));
-      }));
-  });
-}
+auto mainMenu = menu([] (function<Expression<void> (Expression<void>)> exitMenu) {
+    return vertical(
+      button("New Game", exitMenu(newGame)),
+      button("Options", exitMenu(optionsMenu)),
+      button("Exit", exitMenu(exitApp)));
+ });
 
-inline Int printAndReturn(Int expression) {
-  return [=] (Int::Continuation k) {
-    expression([=] (int value) {
-      cout << "printAndReturn " << value << "\n";
-      k(value);
-    });
-  };
-}
-
-inline Int yield(function<Expr<Widget> (function<Int (Int)>)> body) {
-  return shift([=] (function<Object (Int)> k) {
-    return literal([=] (function<void (Widget const&)> yield2) -> Widget {
-      auto continue_ = [=] (Int value) {
-        return Int([=] (Int::Continuation /*neverExecuted*/) {
-          k(value)([=] (Object::Raw widget) {
-            yield2(widget([=] (Widget const& newWidget) {
-              yield2(newWidget);
-            }));
-          });
-        });
-      };
-
-      Widget result;
-      body(continue_)([&result] (Widget widget) {
-        result = widget;
-      });
-
-      return result;
-    });
-  });
-}
-
-inline Expr<shared_ptr<Widget>> proc(Int body) {
-  return [=] (function<void (shared_ptr<Widget>)> k) {
-    return reset(
-        sequence(
-          body,
-          literal([=] (function<void (Widget)> /*yield*/) {
-            return Widget([=] (int, int) {
-              cout << "final handleClick\n";
-              ((void (*)())0)();
-              });
-            })))([=] (Object::Raw object) {
-              shared_ptr<Widget> widget = make_shared<Widget>();
-              *widget = object([=, &widget] (Widget newWidget) {
-                *widget = newWidget;
-              });
-              k(widget);
-            });
-  };
-}
-
-// TODO: Replace with call to construct().
-inline Expr<Widget> makeWidget(Expr<function<void (int, int)>> handleClick) {
-  return [=] (function<void (Widget const&)> k) {
-    handleClick([=] (function<void (int, int)> _handleClick) {
-      k(Widget(_handleClick));
-    });
-  };
-}
-
-inline Expr<function<void (int, int)>> lambda(function<Int (Int x0, Int x1)> body) {
-  return [=] (function<void (function<void (int, int)>)> k) {
-    k([=] (int _x0, int _x1) {
-      body(literal(_x0), literal(_x1))([] (int) {});
-    });
-  };
-}
-
-inline Int yieldWidget(std::string message) {
-  return yield([=] (function<Int (Int)> continue_) {
-    return makeWidget(
-        lambda([=] (Int, Int) {
-          return sequence(
-              print(message),
-              continue_(literal(1)));
-        }));
-  });
-}
-
-auto app =
-  let(printAndReturn(literal(5)), [=] (Int value1) {
-    return proc(
-        let(yieldWidget("handleClick 1\n"), [=] (Int value2) {
-          return sequence(
-              printAndReturn(sum(value2, literal(1))),
-              printAndReturn(sum(value1, literal(2))),
-              printAndReturn(sum(value1, literal(3))),
-              yieldWidget("final handleClick\n"));
-        }));
-  });
+auto app = mainMenu;
 
 int main() {
-  app([=] (shared_ptr<Widget> widget) {
-    widget->handleClick(5, 5);
-    widget->handleClick(10, 10);
-  });
-
   return 0;
 }
