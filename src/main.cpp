@@ -5,8 +5,49 @@
 
 using namespace std;
 
+namespace detail {
+  template <typename... Args> struct Pack {private: Pack();};
+
+  template <> struct Pack<> {
+  };
+
+  template <typename T, typename... Rest> struct Pack<T, Rest...> {
+    Pack(T const& head_, Pack<Rest...> const& tail_): head(head_), tail(tail_) {}
+    T head;
+    Pack<Rest...> tail;
+  };
+
+  template <typename F, typename... Args>
+  void unpackRecurse(F functor, Pack<> const& /*emptyPack*/, Args... args) {
+    functor(args...);
+  }
+
+  template <typename F, typename T, typename... Rest, typename... Args>
+  void unpackRecurse(F functor, Pack<T, Rest...> const& pack, Args... args) {
+    detail::unpackRecurse(functor, pack.tail, args..., pack.head);
+  }
+}
+
+inline detail::Pack<> pack() {
+  return detail::Pack<>();
+}
+
+template <typename T, typename... Rest> detail::Pack<T, Rest...> pack(T const& head, Rest... tail) {
+  return detail::Pack<T, Rest...>(head, pack(tail...));
+}
+
+template <typename F, typename... Args>
+void unpack(F functor, detail::Pack<Args...> const& pack) {
+  return detail::unpackRecurse(functor, pack);
+}
+
 template <typename T> struct Expression {
   using Continuation = function<void (T)>;
+  using Function = function<void (Continuation)>;
+
+  Function fn;
+
+  template <typename F> Expression(F const& fn_): fn(fn_) {}
 
   void operator()(Continuation k) const {
     fn(k);
@@ -49,16 +90,6 @@ inline Expression<void> print(Expression<string> value) {
 template <typename T> struct Value {
 };
 
-template <typename DX, typename DY, typename T> struct Layoutable {
-};
-
-template <typename T> struct Layout {};
-
-template <typename DX, typename DY, typename T> Layoutable<DX, DY, T> layoutable(
-    function<Layout<T> (typename DX::Type dimX, typename DY::Type dimY)> fn) {
-  return Layoutable<DX, DY, T>(fn);
-}
-
 namespace layoutDimensions {
   struct Fixed {
     using Type = Value<float>;
@@ -88,30 +119,75 @@ namespace layoutDimensions {
   }
 }
 
+template <typename T> struct Layout {
+  layoutDimensions::Dimension dimX;
+  layoutDimensions::Dimension dimY;
+  T uiElement;
+
+  Layout(layoutDimensions::Dimension dimX_, layoutDimensions::Dimension dimY_, T uiElement_):
+    dimX(dimX_), dimY(dimY_), uiElement(uiElement_) {}
+};
+
+template <typename T> layoutDimensions::Dimension layoutDimX(Layout<T> const& layout) {
+  return layout.dimX;
+}
+
+template <typename T> layoutDimensions::Dimension layoutDimY(Layout<T> const& layout) {
+  return layout.dimY;
+}
+
+template <typename T> T layoutElement(Layout<T> const& layout) {
+  return layout.uiElement;
+}
+
 template <typename T> Layout<T> layout(
     layoutDimensions::Dimension dimX,
     layoutDimensions::Dimension dimY,
-    shared_ptr<T> uiElement) {
+    T uiElement) {
   return Layout<T>(dimX, dimY, uiElement);
 }
+
+template <typename DX, typename DY, typename T> struct Layoutable {
+  Layoutable(function<Layout<T> (typename DX::Type dimX, typename DY::Type dimY)> const& fn_): fn(fn_) {}
+  function<Layout<T> (typename DX::Type dimX, typename DY::Type dimY)> fn;
+};
+
+template <typename DX, typename DY, typename T> Layoutable<DX, DY, T> layoutable(
+    function<Layout<T> (typename DX::Type dimX, typename DY::Type dimY)> fn) {
+  return Layoutable<DX, DY, T>(fn);
+}
+
+template <typename DX, typename DY, typename T>
+Layout<T> performLayout(Layoutable<DX, DY, T> layoutable, typename DX::Type dimX, typename DX::Type dimY) {
+  return layoutable.fn(dimX, dimY);
+}
+
+struct Widget_ {
+  virtual ~Widget_();
+};
 
 template <typename T> Layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed, T> overlay(
     Layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed, T> fixed,
     Layoutable<layoutDimensions::Expandable, layoutDimensions::Expandable, T> expandable) {
-  struct OverlayObject : T {
-    shared_ptr<T> fixed;
-    shared_ptr<T> expandable;
+  struct OverlayObject : Widget_ { // TODO: Not generic.
+    OverlayObject(T fixed_, T expandable_): fixed(fixed_), expandable(expandable_) {}
+
+    T fixed;
+    T expandable;
   };
 
   return layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed>(
-      function<Layout<shared_ptr<T>> (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY)>(
-          [=] (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY) -> Layout<shared_ptr<T>> {
+      function<Layout<T> (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY)>(
+          [=] (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY) -> Layout<T> {
             auto fixedWidget = performLayout(fixed, dimX, dimY);
             auto expandableWidget = performLayout(expandable, layoutDimX(fixedWidget), layoutDimY(fixedWidget));
 
+            // Removing this causes compile error for some reason...
+            OverlayObject(layoutElement(fixedWidget), layoutElement(expandableWidget));
+
             return layout(
                 layoutDimX(fixedWidget), layoutDimY(fixedWidget),
-                shared_ptr<T>(make_shared<OverlayObject>(fixedWidget, expandableWidget)));
+                T(make_shared<OverlayObject>(layoutElement(fixedWidget), layoutElement(expandableWidget))));
           }));
 }
 
@@ -147,11 +223,9 @@ template <typename T, typename... Args> Layoutable<T, layoutDimensions::Fixed, l
           }));
 }
 
-struct Widget_ {
-  virtual ~Widget_() {}
-};
+Widget_::~Widget_() {}
 
-template <typename DX, typename DY> using Widget = Layoutable<DX, DY, Widget_>;
+template <typename DX, typename DY> using Widget = Layoutable<DX, DY, shared_ptr<Widget_>>;
 
 struct UiManager {
   struct Element : enable_shared_from_this<Element> {
@@ -162,9 +236,7 @@ struct UiManager {
     Element(UiManager& manager_, Value<float> x_, Value<float> y_):
       manager(manager_), x(x_), y(y_) {}
 
-    virtual ~Element() {
-      manager.removeElement(shared_from_this());
-    }
+    virtual ~Element();
 
     Value<float> getX() {
       return x;
@@ -180,6 +252,12 @@ struct UiManager {
   vector<ElementHandle> elements;
 
   struct TextElement : Element {
+    string text;
+    TextElement(UiManager& manager_, string text_, Value<float> x_, Value<float> y_)
+        : Element(manager_, x_, y_), text(text_) {
+    }
+
+    virtual ~TextElement();
   };
 
   ElementHandle makeTextElement(string text, Value<float> posX, Value<float> posY) {
@@ -193,6 +271,13 @@ struct UiManager {
     ((void (*)())0)();
   }
 };
+
+UiManager::Element::~Element() {
+  manager.removeElement(shared_from_this());
+}
+
+UiManager::TextElement::~TextElement() {
+}
 
 UiManager uiManager;
 
@@ -215,17 +300,16 @@ inline UiElementHandle makeUiTextElement(string text, Value<float> posX, Value<f
 struct TouchManager {
   struct Element : enable_shared_from_this<Element> {
     TouchManager& manager;
+    Expression<void> action;
     Value<float> x;
     Value<float> w;
     Value<float> y;
     Value<float> h;
 
-    Element(TouchManager& manager_, Value<float> x_, Value<float> w_, Value<float> y_, Value<float> h_):
-      manager(manager_), x(x_), w(w_), y(y_), h(h_) {}
+    Element(TouchManager& manager_, Expression<void> action_, Value<float> x_, Value<float> w_, Value<float> y_, Value<float> h_):
+      manager(manager_), action(action_), x(x_), w(w_), y(y_), h(h_) {}
 
-    virtual ~Element() {
-      manager.removeElement(shared_from_this());
-    }
+    virtual ~Element();
 
     Value<float> getX() {
       return x;
@@ -252,6 +336,10 @@ struct TouchManager {
   }
 };
 
+TouchManager::Element::~Element() {
+  manager.removeElement(shared_from_this());
+}
+
 TouchManager touchManager;
 
 using TouchElement = TouchManager::Element;
@@ -264,12 +352,13 @@ inline TouchElementHandle makeTouchElement(Expression<void> action, Value<float>
 
 inline Widget<layoutDimensions::Fixed, layoutDimensions::Fixed> label(string caption) {
   struct LabelWidget : Widget_ {
+    LabelWidget(UiElementHandle uiElement_): uiElement(uiElement_) {}
     UiElementHandle uiElement;
   };
 
   return layoutable<layoutDimensions::Fixed, layoutDimensions::Fixed>(
-      function<Layout<Widget_> (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY)>(
-          [=] (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY) -> Layout<Widget_> {
+      function<Layout<shared_ptr<Widget_>> (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY)>(
+          [=] (layoutDimensions::Fixed::Type dimX, layoutDimensions::Fixed::Type dimY) -> Layout<shared_ptr<Widget_>> {
             auto uiElement = makeUiTextElement(caption, dimX, dimY);
             return layout(
                 layoutDimensions::dimension(dimX, sizeX(uiElement)),
@@ -280,12 +369,13 @@ inline Widget<layoutDimensions::Fixed, layoutDimensions::Fixed> label(string cap
 
 inline Widget<layoutDimensions::Expandable, layoutDimensions::Expandable> hotRegion(Expression<void> action) {
   struct HotRegionWidget : Widget_ {
-    TouchElement touchElement;
+    HotRegionWidget(TouchElementHandle touchElement_): touchElement(touchElement_) {}
+    TouchElementHandle touchElement;
   };
 
   return layoutable<layoutDimensions::Expandable, layoutDimensions::Expandable>(
-      function<Layout<Widget_> (layoutDimensions::Expandable::Type dimX, layoutDimensions::Expandable::Type dimY)>(
-          [=] (layoutDimensions::Expandable::Type dimX, layoutDimensions::Expandable::Type dimY) -> Layout<Widget_> {
+      function<Layout<shared_ptr<Widget_>> (layoutDimensions::Expandable::Type dimX, layoutDimensions::Expandable::Type dimY)>(
+          [=] (layoutDimensions::Expandable::Type dimX, layoutDimensions::Expandable::Type dimY) -> Layout<shared_ptr<Widget_>> {
             auto touchElement = makeTouchElement(action, pos(dimX), size(dimX), pos(dimY), size(dimY));
             return layout(
                 dimX, dimY, shared_ptr<Widget_>(make_shared<HotRegionWidget>(touchElement)));
@@ -296,26 +386,27 @@ inline Widget<layoutDimensions::Fixed, layoutDimensions::Fixed> button(string ca
   return overlay(label(caption), hotRegion(action));
 }
 
-auto newGame = print("Starting new game.\n"_x);
+auto startNewGame = print("Starting new game.\n"_x);
 auto foo = print("Setting foo.\n"_x);
 
-inline Expression<void> optionsMenu(Expression<void> back) {
-  return menu([=] (function<Expression<void> (Expression<void>)> exitMenu) {
-    return vertical(
-      button("Back", exitMenu(back)),
-      button("Foo", foo));
-  });
-}
-
-auto mainMenu = menu([] (function<Expression<void> (Expression<void>)> exitMenu) {
-    return vertical(
-      button("New Game", exitMenu(newGame)),
-      button("Options", exitMenu(optionsMenu)),
-      button("Exit", exitMenu(exitApp)));
- });
-
-auto app = mainMenu;
+//inline Expression<void> runOptionsMenu(Expression<void> back) {
+//  return slidePrompt([=] (function<Expression<void> (Expression<void>)> exitMenu) {
+//    return items(
+//      button("Back", exitMenu(back)),
+//      button("Foo", foo));
+//  });
+//}
+//
+//auto runMainMenu = slidePrompt([] (function<Expression<void> (Expression<void>)> exitMenu) {
+//    return items(
+//      button("New Game", exitMenu(startNewGame)),
+//      button("Options", exitMenu(runOptionsMenu)),
+//      button("Exit", exitMenu(exitApp)));
+// });
+//
+//auto app = runMainMenu;
 
 int main() {
+
   return 0;
 }
