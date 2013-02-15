@@ -5,18 +5,18 @@
 
 using namespace std;
 
+template <typename... Args> struct Pack {private: Pack();};
+
+template <> struct Pack<> {
+};
+
+template <typename T, typename... Rest> struct Pack<T, Rest...> {
+  Pack(T const& head_, Pack<Rest...> const& tail_): head(head_), tail(tail_) {}
+  T head;
+  Pack<Rest...> tail;
+};
+
 namespace detail {
-  template <typename... Args> struct Pack {private: Pack();};
-
-  template <> struct Pack<> {
-  };
-
-  template <typename T, typename... Rest> struct Pack<T, Rest...> {
-    Pack(T const& head_, Pack<Rest...> const& tail_): head(head_), tail(tail_) {}
-    T head;
-    Pack<Rest...> tail;
-  };
-
   template <typename F, typename... Args>
   void unpackRecurse(F functor, Pack<> const& /*emptyPack*/, Args... args) {
     functor(args...);
@@ -28,16 +28,16 @@ namespace detail {
   }
 }
 
-inline detail::Pack<> pack() {
-  return detail::Pack<>();
+inline Pack<> pack() {
+  return Pack<>();
 }
 
-template <typename T, typename... Rest> detail::Pack<T, Rest...> pack(T const& head, Rest... tail) {
-  return detail::Pack<T, Rest...>(head, pack(tail...));
+template <typename T, typename... Rest> Pack<T, Rest...> pack(T const& head, Rest... tail) {
+  return Pack<T, Rest...>(head, pack(tail...));
 }
 
 template <typename F, typename... Args>
-void unpack(F functor, detail::Pack<Args...> const& pack) {
+void unpack(F functor, Pack<Args...> const& pack) {
   return detail::unpackRecurse(functor, pack);
 }
 
@@ -52,7 +52,39 @@ template <typename T> struct Expression {
   void operator()(Continuation k) const {
     fn(k);
   }
+
+  Expression<T> operator+(Expression<T> r) {
+    return call(std::plus<T>(), *this, r);
+  }
+
+  Expression<T> operator-(Expression<T> r) {
+    return call(std::minus<T>(), *this, r);
+  }
+
+  Expression<T> operator*(Expression<T> r) {
+    return call(std::multiplies<T>(), *this, r);
+  }
 };
+
+namespace detail {
+  template <typename T, typename F, typename... Args> inline void callRecurse(
+      typename Expression<T>::Continuation k, F const& func, Pack<Args...> args) {
+    k(unpackReverse(func, args));
+  }
+
+  template <typename T, typename F, typename... Args, typename Head, typename... Rest> inline void callRecurse(
+      typename Expression<T>::Continuation k, F const& func, Pack<Args...> args, Expression<Head> head, Rest... rest) {
+    head([=] (Head const& headVal) {
+      callRecurse(k, func, Pack<Head, Args...>(headVal, args), rest...);
+    });
+  }
+}
+
+template <typename T, typename F, typename... Args> inline Expression<T> call(F const& func, Args... args) {
+  return [=] (typename Expression<T>::Continuation k) {
+    callRecurse(k, func, Pack<>(), args...);
+  };
+}
 
 template <> struct Expression<void> {
   using Continuation = function<void ()>;
@@ -87,8 +119,35 @@ inline Expression<void> print(Expression<string> value) {
   };
 }
 
-template <typename T> struct Value {
+template <typename T> struct Value : Expression<T> {
 };
+
+template <typename T> inline Value<T> makeVariable(T const& initial) {
+  shared_ptr<T> value = new T(initial);
+  return Value<T>([=] (typename Expression<T>::Continuation k) {
+    k(*value);
+  }, [=] (Expression<T> newValue) {
+    return Expression<void>([=] (Expression<void>::Continuation onValueSet) {
+      newValue([=] (T const& x) {
+        *value = x;
+        onValueSet();
+      });
+    });
+  });
+}
+
+Value<float> currentTime = makeVariable(0.0f); // TODO: Deal with loss of precision as time increases.
+
+inline Expression<void> animate(Value<float> value, float speed, float target) {
+  return sequence(
+      let(currentTime, [=] (Value<float> initialTime) {
+        return sequence(
+          let(value, [=] (Value<float> initialValue) {
+            return sequence(
+              startTracking(value, initialValue + literal(speed) * (currentTime - initialTime)), // untrack...
+              waitTime(initialTime + (target - initialValue) / speed),
+              set(value, target));}));});
+}
 
 namespace layoutDimensions {
   struct Fixed {
@@ -386,25 +445,45 @@ inline Widget<layoutDimensions::Fixed, layoutDimensions::Fixed> button(string ca
   return overlay(label(caption), hotRegion(action));
 }
 
+template <typename... Args>
+inline Expression<void> slidePrompt(
+    function<Pack<Args...> const& (function<Expression<void> (Expression<void>)>)> genItems) {
+  auto generatePrompt = [=] (Value<float> offsetX, function<Expression<void> (Expression<void>)> exit) {
+    return Expression<Widget<layoutDimensions::Fixed, layoutDimensions::Fixed>>(
+        [=] (Expression<Widget<layoutDimensions::Fixed, layoutDimensions::Fixed>>::Continuation k) {
+          k(offset(offsetX, offsetX, vertical(genItems(exit))));
+        });
+  };
+
+  return let(literal(0.0f), [=] (Value<float>& offsetX) {
+    return let(generatePrompt(offsetX, [=] (Value<void> next) {
+        return sequence(animate(offsetX, -1.0f, 0.0f), next);}), [=] (Expression<Widget> prompt) {
+      return sequence(
+          set(promptRoot, prompt),
+          animate(offsetX, 1.0f, 1.0f),
+          waitForever());});
+  });
+}
+
 auto startNewGame = print("Starting new game.\n"_x);
 auto foo = print("Setting foo.\n"_x);
 
-//inline Expression<void> runOptionsMenu(Expression<void> back) {
-//  return slidePrompt([=] (function<Expression<void> (Expression<void>)> exitMenu) {
-//    return items(
-//      button("Back", exitMenu(back)),
-//      button("Foo", foo));
-//  });
-//}
-//
-//auto runMainMenu = slidePrompt([] (function<Expression<void> (Expression<void>)> exitMenu) {
-//    return items(
-//      button("New Game", exitMenu(startNewGame)),
-//      button("Options", exitMenu(runOptionsMenu)),
-//      button("Exit", exitMenu(exitApp)));
-// });
-//
-//auto app = runMainMenu;
+inline Expression<void> runOptionsMenu(Expression<void> back) {
+  return slidePrompt([=] (function<Expression<void> (Expression<void>)> exitMenu) {
+    return pack(
+      button("Back", exitMenu(back)),
+      button("Foo", foo));
+  });
+}
+
+auto runMainMenu = slidePrompt([] (function<Expression<void> (Expression<void>)> exitMenu) {
+    return pack(
+      button("New Game", exitMenu(startNewGame)),
+      button("Options", exitMenu(runOptionsMenu)),
+      button("Exit", exitMenu(exitApp)));
+ });
+
+auto app = runMainMenu;
 
 int main() {
 
